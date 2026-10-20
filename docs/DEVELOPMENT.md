@@ -47,6 +47,16 @@ debug APK 预期输出位置：`app/build/outputs/apk/debug/app-debug.apk`。rel
 
 新增 Media3 1.11.1、Go 编译的 libgocryptfs JNI、Mac Swift/Python 配套程序。构建需要 Go（本机 1.26.0）；Gradle 的 `buildVaultNative` 会在 `preBuild` 前生成四种 ABI 的库，不提交二进制。
 
-版本为 `0.2.0-dev`，内部 versionCode 41。运行入口与实际验证见 FEATURES.md、VALIDATION.md。Mac 配对令牌和密钥在 `mac/.state/`，禁止提交；开发版 Mac 程序由 `mac/run.sh` 构建到 `mac/build/`，依赖仓库位置。
+0.2 初始版本为 `0.2.0-dev`，内部 versionCode 41。运行入口与实际验证见 FEATURES.md、VALIDATION.md。Mac 配对令牌和密钥在 `mac/.state/`，禁止提交；开发版 Mac 程序由 `mac/run.sh` 构建到 `mac/build/`，依赖仓库位置。
 
 0.2 最后一次完整检查通过：assembleDebug、testDebugUnitTest、lintDebug；2 个 JVM 测试通过，lint 0 error / 933 warning。另有 6 个 Python 服务测试与真机 Instrumentation 集成检查。
+
+## 0.2.1 播放器与发布
+
+当前版本 `0.2.1-dev`，versionCode 42。手势层 `VideoGestureLayout` 在当前布局坐标中锁定方向，普通视频、库内视频和 Mac 视频复用同一个播放界面；未替换 Media3 和底层 DataSource。
+
+最后一次 Android 检查：assembleDebug、testDebugUnitTest、lintDebug 均通过，4 个 JVM 测试，lint 0 error / 937 warning。真机 API 36 和模拟器 API 34 均通过横竖屏手势 Instrumentation，详见 [验证记录](VALIDATION.md)。
+
+CI 会先安装 SDK Platform 37.2、Build Tools 37.0.0、NDK 30.0.16248370 与 CMake 3.22.1，再构建四种 ABI 的 native 库；不依赖开发机已有的 NDK。CI 产物使用 runner 的临时 debug 签名，与本机预发布 APK 不保证可覆盖更新。
+
+代码托管及发布流程见 [发布说明](RELEASING.md)。公开预发布 APK 采用已在真机验证的本机 debug 签名；正式签名配置仍为后续工作。

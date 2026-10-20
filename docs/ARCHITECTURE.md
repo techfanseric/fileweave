@@ -6,6 +6,8 @@
 
 播放器使用 AndroidX Media3 1.11.1。`PathDataSource` 把 Media3 的位置读取映射到已有 NIO ByteChannel，包括 SMB/SFTP；对可直接访问的 Linux 文件先使用本地只读通道，避免上游将应用私有缓存误判为需要 Root。
 
+`VideoGestureLayout` 在播放根布局统一处理触摸方向，使用当前窗口宽高归一化位移；一次手势锁定为进度、亮度或音量。横拖松手才 seek，取消／旋转／退出先恢复状态再释放播放器。双击由 GestureDetector 区分于单击，左右分别后退／前进 10 秒。手势反馈独立于控制条，调节时不展示标题和控制条。亮度仅修改窗口属性，媒体音量通过 AudioManager 调整且不请求系统音量 UI。
+
 `BridgeVideoActivity` 是不导出的独立入口，使用证书固定的 OkHttp DataSource。普通外部 VIEW Intent 不能指定保险库读取上下文或接入 Mac 配对凭据。
 
 ## 文件内容加密

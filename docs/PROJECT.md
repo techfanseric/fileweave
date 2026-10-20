@@ -1,6 +1,6 @@
 # 项目定位
 
-立项日期：2026-10-20。名称：FileWeave。当前阶段：0.2 开发版功能验证。
+立项日期：2026-10-20。名称：FileWeave。当前阶段：0.2.1 开发版预发布。
 
 ## 核心目标
 
@@ -13,7 +13,7 @@
 1. 浏览手机或 Mac 共享目录，点击普通视频即可播放并记住进度。
 2. 将文件导入保险库，验证密文写入后再由用户决定是否移除原始明文。
 3. 解锁保险库后直接查看视频；锁定时关闭读取会话并停止播放。
-4. 在文件管理器中选择文件，通过系统分享入口发送至 Mac；早期可调用已安装的 KDE Connect / LocalSend。
+4. 在文件管理器中选择文件，通过「发送到 Mac」发送至已配对的 Mac 菜单栏程序。
 5. 用户明确操作后发送剪贴板文本到已配对设备，接收内容可预览并复制。
 
 ## 第一版边界
@@ -22,4 +22,4 @@
 
 已采用标准 gocryptfs 格式，并实现 Swift 菜单栏 + Python HTTPS 服务作为 Mac 开发版配套程序。功能和实际验证范围见 FEATURES.md 与 VALIDATION.md。
 
-产品名称已由用户确认；公开发行前仍需检查名称冲突并确认长期 applicationId。当前 applicationId 是工程初始化选择。
+产品名称为 FileWeave，当前 applicationId 为 `org.fileweave.android`。公开托管于 https://github.com/techfanseric/fileweave；当前仅发布开发版，不代表名称或商标已完成法律核验。

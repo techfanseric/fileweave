@@ -8,7 +8,7 @@
 - 导入日期：2026-10-20
 - 本地开发分支：main
 - 上游远端：upstream
-- FileWeave 托管远端：尚未创建
+- FileWeave 托管远端：origin，https://github.com/techfanseric/fileweave
 
 完整保留原 Git 历史与 LICENSE。原 README 和隐私说明分别保留在根目录的 `README.upstream.md`、`README.upstream.zh-CN.md` 和 `PRIVACY.upstream.md`。上游隐私说明仅用于来源记录，不代表 FileWeave 的承诺。
 
@@ -16,8 +16,10 @@
 
 暂时保留原源码包名和资源结构，减少大规模重命名带来的合并冲突；安装标识和 Provider authority 已独立。后续复用第三方组件前，记录精确版本、许可和集成方式。
 
-本次修改的重点为项目身份、移除 Firebase 接入、立项文档和 CI 命名。上游版权和作者信息保留。关于页面暂时链接到原项目和原作者，发布前增加清晰的分支归属。
+本次修改的重点为项目身份、移除 Firebase 接入、立项文档和 CI 命名。上游版权和作者信息保留。关于页面仍保留原项目和原作者链接；README、许可说明和 GitHub 发布页明确标注 FileWeave 的独立分支归属。关于页面的完整分支信息仍列为后续完善。
 
 内部 versionCode 保留上游的 40，避免现有 AppUpgrader 将后续启动误判为旧版升级；对外 versionName 独立为 0.1.0-dev。
 
 0.2 新增代码组织在 viewer/video、vault、bridge 与 features；新增第三方加密源码单独置于 third_party，并保留 MIT 许可。未修改既有 SMB/SFTP Provider 的实现。内部 versionCode 从 40 递增到 41。
+
+0.2.1 将内部 versionCode 递增至 42，对外 versionName 为 `0.2.1-dev`；首次公开预发布标签为 `v0.2.1-dev`。仅向 origin 推送 main 和 FileWeave 自有版本标签，不批量发布上游历史标签。
