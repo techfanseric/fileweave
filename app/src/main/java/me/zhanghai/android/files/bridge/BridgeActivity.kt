@@ -6,14 +6,11 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
-import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import com.google.android.material.textfield.TextInputEditText
-import com.google.android.material.textfield.TextInputLayout
 import java.io.IOException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -30,7 +27,13 @@ class BridgeActivity : FeatureActivity() {
     private var busy = false
     private var discovery: BridgeDiscovery? = null
     private val nearby = linkedMapOf<String, BridgeDiscovery.MacEndpoint>()
-    private val attempted = mutableSetOf<String>()
+    private val retry = BridgeRetry()
+    private var automation: Job? = null
+    private var connecting = false
+    private var connectionFailed = false
+    private var confirmingIdentity = false
+    private var lastRefresh = 0L
+    private var lastDiscoveryRestart = 0L
     private var pairingJob: Job? = null
     private var pairingBridge: BridgeClient? = null
     private var pairingCode: String? = null
@@ -38,7 +41,6 @@ class BridgeActivity : FeatureActivity() {
     private var autoPair = true
     private var discoveryFailed = false
     private var connected = false
-    private var manualPairing = false
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     private val settleDiscovery = Runnable { autoConnect() }
     private var config: BridgeConfig? = null
@@ -46,7 +48,6 @@ class BridgeActivity : FeatureActivity() {
     private var sharedFiles = emptyList<Pair<String, Long>>()
     private var pendingPath: java8.nio.file.Path? = null
     private var downloading: String? = null
-    private var pairingText: String? = null
     private var status: String? = null
     private val picker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) work { bridge ->
@@ -74,8 +75,6 @@ class BridgeActivity : FeatureActivity() {
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
         config = BridgeStore.read(this)
         pendingPath = intent.extraPath
-        pairingText = intent.data?.takeIf { it.scheme == "fileweave" && it.host == "pair" }?.toString()
-        manualPairing = pairingText != null
         downloading = savedInstanceState?.getString("downloading")
         render()
     }
@@ -90,44 +89,16 @@ class BridgeActivity : FeatureActivity() {
             return
         }
         if (busy) { text(getString(R.string.fw_working)); return }
-        if (config == null || manualPairing) {
-            status?.let { text(it) }
-            text(getString(if (discoveryFailed) R.string.fw_bridge_discovery_failed else R.string.fw_bridge_discovering))
-            nearby.values.forEach { endpoint ->
-                button(endpoint.name) { autoPair = true; beginPairing(endpoint) }
+        if (config == null || !connected) {
+            text(status ?: getString(if (discoveryFailed) R.string.fw_bridge_discovery_failed else R.string.fw_bridge_discovering))
+            if (nearby.size > 1 && (config == null || (connectionFailed && nearby.values.none { it.pin == config?.pin }))) {
+                text(getString(R.string.fw_bridge_choose_mac))
+                nearby.values.forEach { endpoint -> button(endpoint.name) { autoPair = true; beginPairing(endpoint) } }
             }
-            button(getString(R.string.fw_bridge_search)) { autoPair = true; restartDiscovery() }
-            if (!manualPairing) {
-                button(getString(R.string.fw_bridge_manual)) { manualPairing = true; render() }
-                return
-            }
-            text(getString(R.string.fw_bridge_intro))
-            val field = TextInputEditText(this).apply {
-                hint = "fileweave://pair?…"
-                inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-                isSaveEnabled = false
-                if (android.os.Build.VERSION.SDK_INT >= 26) importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
-                setText(pairingText.orEmpty())
-                maxLines = 5
-            }
-            content.addView(TextInputLayout(this).apply { addView(field) })
-            button(getString(R.string.fw_bridge_pair)) {
-                val proposed = try { BridgeConfig.parse(field.text.toString()) } catch (_: Exception) {
-                    field.error = getString(R.string.fw_bridge_invalid_pairing); return@button
-                }
-                MaterialAlertDialogBuilder(this).setTitle(getString(R.string.fw_bridge_trust, proposed.host))
-                    .setMessage(getString(R.string.fw_bridge_pin, proposed.pin.chunked(8).joinToString(" ")))
-                    .setPositiveButton(R.string.fw_bridge_pair) { _, _ ->
-                        field.text?.clear(); pairingText = null; manualPairing = false
-                        connect(proposed)
-                    }.setNegativeButton(android.R.string.cancel, null).show()
-            }
-            button(getString(android.R.string.cancel)) { pairingText = null; manualPairing = false; render() }
             return
         }
         val current = config!!
-        text("${current.host}:${current.port}\n${status ?: getString(R.string.fw_bridge_ready)}")
-        button(getString(R.string.fw_bridge_check)) { connect(current) }
+        text(status ?: getString(R.string.fw_bridge_ready))
         button(getString(R.string.fw_bridge_send_clipboard)) {
             val clipboard = getSystemService(ClipboardManager::class.java)
             val text = clipboard.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString()
@@ -167,57 +138,92 @@ class BridgeActivity : FeatureActivity() {
                 }.show()
             }
         }
-        button(getString(R.string.fw_bridge_forget)) {
-            client?.close(); config = null; sharedFiles = emptyList(); status = null
-            BridgeStore.forget(this); connected = false; autoPair = false; render()
-        }
     }
 
     override fun onStart() {
         super.onStart()
-        attempted.clear()
+        retry.reset()
+        autoPair = true
         restartDiscovery()
-        config?.let { if (!manualPairing) connect(it, quiet = true) }
+        autoConnect()
+        automation = lifecycleScope.launch {
+            while (true) {
+                delay(1000)
+                if (discoveryFailed && now() - lastDiscoveryRestart >= 10_000) restartDiscovery()
+                if (connected && !busy && !connecting && now() - lastRefresh >= 5000) refreshFiles()
+                else if (!connected) autoConnect()
+            }
+        }
     }
+
+    private fun now() = android.os.SystemClock.elapsedRealtime()
 
     private fun restartDiscovery() {
         discovery?.stop()
         nearby.clear()
         discoveryFailed = false
+        lastDiscoveryRestart = now()
         discovery = BridgeDiscovery(this, { endpoint ->
             nearby[endpoint.name] = endpoint
             handler.removeCallbacks(settleDiscovery)
             handler.postDelayed(settleDiscovery, 1500)
-            if (!busy && pairingCode == null && !manualPairing) render()
+            if (!busy && pairingCode == null && !connected) render()
         }, { name ->
             nearby.remove(name)?.let { endpoint ->
-                attempted.remove("${endpoint.host}:${endpoint.port}:${endpoint.pin}")
-                if (config?.pin == endpoint.pin) { connected = false; status = getString(R.string.fw_bridge_auto_wait) }
+                if (config?.pin == endpoint.pin) {
+                    connected = false; retry.reset(); status = getString(R.string.fw_bridge_auto_wait)
+                }
             }
-            if (!busy && pairingCode == null && !manualPairing) render()
-        }, { discoveryFailed = true; if (!busy && pairingCode == null && !manualPairing) render() }).also { it.start() }
-        if (!busy && pairingCode == null && !manualPairing) render()
+            if (!busy && pairingCode == null && !connected) render()
+        }, { discoveryFailed = true; if (!busy && pairingCode == null && !connected) render() }).also { it.start() }
+        if (!busy && pairingCode == null && !connected) render()
     }
 
     private fun autoConnect() {
-        if (!lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) || manualPairing || pairingCode != null) return
-        if (busy) { handler.postDelayed(settleDiscovery, 1500); return }
+        if (!lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) || connected || busy || connecting ||
+            confirmingIdentity || pairingCode != null || !retry.ready(now())) return
         val saved = config
         if (saved != null) {
-            // Never replace the remembered certificate with a different broadcast identity.
-            nearby.values.filter { it.pin == saved.pin }.forEach { endpoint ->
-                val key = "${endpoint.host}:${endpoint.port}:${endpoint.pin}"
-                if (attempted.add(key) && (!connected ||
-                            endpoint.host != saved.host || endpoint.port != saved.port)) {
-                    connect(endpoint.config(saved.token), quiet = true)
-                    return
-                }
-            }
+            val matched = nearby.values.lastOrNull { it.pin == saved.pin }
+            // A changed identity always returns to the human comparison flow, never silent trust.
+            if (matched == null && connectionFailed && autoPair && nearby.size == 1) {
+                beginPairing(nearby.values.single())
+            } else connect(matched?.config(saved.token) ?: saved)
         } else if (autoPair && nearby.size == 1) beginPairing(nearby.values.single())
     }
 
+    private fun readFiles(bridge: BridgeClient): List<Pair<String, Long>> {
+        val array = bridge.json("files").getJSONArray("files")
+        return (0 until array.length()).map { array.getJSONObject(it) }
+            .map { it.getString("name") to it.getLong("size") }
+    }
+
+    private suspend fun refreshFiles() {
+        val bridge = client ?: return
+        lastRefresh = now()
+        try {
+            val files = withContext(Dispatchers.IO) { readFiles(bridge) }
+            if (files != sharedFiles) { sharedFiles = files; render() }
+        } catch (error: Exception) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            if (!busy) { recover(error); render() }
+        }
+    }
+
+    private fun recover(error: Exception) {
+        client?.close(); client = null
+        connected = false; connectionFailed = true
+        retry.failed(now())
+        status = getString(R.string.fw_bridge_auto_wait)
+        // A verified server rejecting the old credential needs fresh approval, not a reset button.
+        if (error is BridgeHttpException && error.status == 401) {
+            BridgeStore.forget(this); config = null; sharedFiles = emptyList(); autoPair = true
+            status = getString(R.string.fw_bridge_reapprove)
+        }
+    }
+
     private fun beginPairing(endpoint: BridgeDiscovery.MacEndpoint) {
-        if (busy || pairingJob?.isActive == true) return
+        if (busy || connecting || confirmingIdentity || pairingJob?.isActive == true) return
         val nonce = android.util.Base64.encodeToString(ByteArray(32).also(java.security.SecureRandom()::nextBytes),
             android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING)
         val code = BridgePairingCode.create(endpoint.pin, nonce)
@@ -257,7 +263,8 @@ class BridgeActivity : FeatureActivity() {
                     429 -> R.string.fw_bridge_pair_busy
                     else -> R.string.fw_bridge_failure
                 })
-                autoPair = false
+                autoPair = (error as? BridgeHttpException)?.status != 403
+                retry.failed(now())
             } finally {
                 if (approved == null && requestId != null) withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
                     try { bridge.pairingRequest("pair/cancel", org.json.JSONObject().put("id", requestId).put("nonce", nonce)) } catch (_: Exception) { }
@@ -271,11 +278,20 @@ class BridgeActivity : FeatureActivity() {
             approved?.let { proposed ->
                 autoPair = false
                 if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                    confirmingIdentity = true
                     MaterialAlertDialogBuilder(this@BridgeActivity)
                         .setTitle(getString(R.string.fw_bridge_trust, endpoint.name))
                         .setMessage(getString(R.string.fw_bridge_finish_message, code))
-                        .setPositiveButton(R.string.fw_bridge_finish) { _, _ -> connect(proposed) }
-                        .setNegativeButton(android.R.string.cancel, null).show()
+                        .setPositiveButton(R.string.fw_bridge_finish) { _, _ ->
+                            try {
+                                // Human trust is complete: keep credentials even if Wi-Fi drops now.
+                                BridgeStore.save(this@BridgeActivity, proposed)
+                                config = proposed; connected = false
+                                connect(proposed)
+                            } catch (_: Exception) { showFailure(); render() }
+                        }
+                        .setNegativeButton(android.R.string.cancel, null)
+                        .setOnDismissListener { confirmingIdentity = false; autoPair = false }.show()
                 }
             }
         }
@@ -288,35 +304,35 @@ class BridgeActivity : FeatureActivity() {
     }
 
     override fun onStop() {
+        automation?.cancel(); automation = null
         handler.removeCallbacks(settleDiscovery)
         discovery?.stop(); discovery = null
         if (pairingCode != null) cancelPairing()
         super.onStop()
     }
 
-    private fun connect(proposed: BridgeConfig, quiet: Boolean = false) {
-        if (busy) return
-        busy = true; render()
+    private fun connect(proposed: BridgeConfig) {
+        if (busy || connecting) return
+        connecting = true
         lifecycleScope.launch {
             val bridge = BridgeClient(proposed)
             try {
                 val result = withContext(Dispatchers.IO) {
                     val info = bridge.json("status")
                     require(info.getInt("protocol") == 1)
-                    val array = bridge.json("files").getJSONArray("files")
-                    val files = (0 until array.length()).map { array.getJSONObject(it) }.map { it.getString("name") to it.getLong("size") }
+                    val files = readFiles(bridge)
                     BridgeStore.save(this@BridgeActivity, proposed)
                     info.getString("name") to files
                 }
                 client?.close(); client = bridge; config = proposed; connected = true
+                connectionFailed = false; retry.reset(); lastRefresh = now()
                 status = getString(R.string.fw_bridge_connected, result.first)
                 sharedFiles = result.second
-            } catch (e: Exception) {
+            } catch (error: Exception) {
                 bridge.close()
-                if (e is kotlinx.coroutines.CancellationException) throw e
-                connected = false
-                if (quiet) status = getString(R.string.fw_bridge_auto_wait) else showFailure()
-            } finally { busy = false; if (!isDestroyed) render() }
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                recover(error)
+            } finally { connecting = false; if (!isDestroyed) render() }
         }
     }
     private fun work(action: suspend (BridgeClient) -> String) {
@@ -330,8 +346,9 @@ class BridgeActivity : FeatureActivity() {
                 if (message.isNotBlank()) Toast.makeText(this@BridgeActivity, message, Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
+                recover(e)
                 showFailure()
-            } finally { busy = false; if (!isDestroyed) render() }
+            } finally { busy = false; lastRefresh = 0; if (!isDestroyed) render() }
         }
     }
     private fun showFailure() {

@@ -167,7 +167,20 @@ class BridgeClient(val config: BridgeConfig) {
             body.byteStream().use { it.copyTo(output) }
         }
     }
-    fun close() { http.dispatcher.cancelAll(); http.connectionPool.evictAll() }
+    fun close() {
+        // TLS shutdown can write close_notify to the socket, including during recovery or
+        // Activity destruction. Keep both cancellation and socket eviction off the UI thread.
+        cleanupExecutor.execute {
+            http.dispatcher.cancelAll()
+            http.connectionPool.evictAll()
+        }
+    }
+
+    companion object {
+        private val cleanupExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
+            Thread(task, "FileWeave-bridge-cleanup").apply { isDaemon = true }
+        }
+    }
 }
 
 class BridgeHttpException(val status: Int) : IOException("Mac returned $status")

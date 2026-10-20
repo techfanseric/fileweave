@@ -4,7 +4,7 @@ cd "$(dirname "$0")"
 APP="$PWD/build/FileWeave Mac.app"
 mkdir -p "$APP/Contents/MacOS"
 if [ ! -f "$APP/Contents/MacOS/FileWeaveMac" ] || [ MenuBar.swift -nt "$APP/Contents/MacOS/FileWeaveMac" ]; then
-    swiftc -O "$PWD/MenuBar.swift" -o "$APP/Contents/MacOS/FileWeaveMac" -framework AppKit -framework CoreImage
+    swiftc -O "$PWD/MenuBar.swift" -o "$APP/Contents/MacOS/FileWeaveMac" -framework AppKit
 fi
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>

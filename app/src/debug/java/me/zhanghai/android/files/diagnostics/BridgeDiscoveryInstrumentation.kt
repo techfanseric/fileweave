@@ -16,7 +16,12 @@ import me.zhanghai.android.files.bridge.BridgeStore
 
 /** Uses the existing approved Mac; never reads clipboard contents or alters shared files. */
 class BridgeDiscoveryInstrumentation : Instrumentation() {
-    override fun onCreate(arguments: Bundle?) { super.onCreate(arguments); start() }
+    private var fixture: String? = null
+    override fun onCreate(arguments: Bundle?) {
+        fixture = arguments?.getString("fixture")
+        require(fixture == null || fixture!!.matches(Regex("fileweave-qa-[a-f0-9]{12}\\.txt")))
+        super.onCreate(arguments); start()
+    }
     override fun onStart() {
         var discovery: BridgeDiscovery? = null
         var original: BridgeConfig? = null
@@ -52,8 +57,24 @@ class BridgeDiscoveryInstrumentation : Instrumentation() {
                 Thread.sleep(200)
             }
             check(reconnected) { "Activity did not recover the stale address" }
+            fixture?.let { name ->
+                val screen = checkNotNull(activity)
+                awaitText(screen) { texts -> texts.any { it.startsWith("已连接") || it.startsWith("Connected to") } }
+                val forbidden = setOf("检查连接 / 刷新", "重新发现附近 Mac", "忘记此 Mac", "使用二维码或配对链接",
+                    "Check connection / refresh", "Search again", "Forget this Mac", "Use QR code or pairing link")
+                awaitText(screen) { texts -> texts.none { it in forbidden } }
+                marker("QA_ADD")
+                awaitText(screen) { name in it }
+                marker("QA_REMOVE")
+                awaitText(screen) { name !in it }
+                marker("QA_RESTART")
+                awaitText(screen) { name in it }
+                marker("QA_REMOVE")
+                awaitText(screen) { name !in it }
+            }
             success = true
-            result.putString("stream", "Bonjour discovery, existing credential reconnect, changed-address recovery and incorrect-certificate rejection: PASS\n")
+            result.putString("stream", "Bonjour discovery, existing credential reconnect, changed-address recovery and incorrect-certificate rejection: PASS\n" +
+                if (fixture != null) "Automatic list add/remove, Mac service crash recovery and simplified controls: PASS\n" else "")
         } catch (error: Throwable) {
             result.putString("stream", "FAILED: ${error.stackTraceToString()}\n")
         } finally {
@@ -62,4 +83,23 @@ class BridgeDiscoveryInstrumentation : Instrumentation() {
         }
         finish(if (success) Activity.RESULT_OK else Activity.RESULT_CANCELED, result)
     }
+    private fun marker(value: String) { sendStatus(0, Bundle().apply { putString("stream", "$value\n") }) }
+    private fun awaitText(activity: Activity, predicate: (List<String>) -> Boolean) {
+        val deadline = SystemClock.elapsedRealtime() + 45000
+        var matched = false
+        while (!matched && SystemClock.elapsedRealtime() < deadline) {
+            runOnMainSync {
+                val texts = mutableListOf<String>()
+                fun collect(view: android.view.View) {
+                    if (view is android.widget.TextView) texts += view.text.toString()
+                    if (view is android.view.ViewGroup) for (i in 0 until view.childCount) collect(view.getChildAt(i))
+                }
+                collect(activity.findViewById(android.R.id.content))
+                matched = predicate(texts)
+            }
+            Thread.sleep(200)
+        }
+        check(matched) { "Automatic UI update timed out" }
+    }
+
 }

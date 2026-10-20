@@ -361,14 +361,7 @@
             </intent-filter>
         </activity>
 
-        <activity android:name="me.zhanghai.android.files.bridge.BridgeActivity" android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="fileweave" android:host="pair" />
-            </intent-filter>
-        </activity>
+        <activity android:name="me.zhanghai.android.files.bridge.BridgeActivity" android:exported="false" />
         <activity android:name="me.zhanghai.android.files.viewer.video.BridgeVideoActivity"
             android:exported="false" android:theme="@style/Theme.MaterialFiles.Immersive" />
         <activity android:name="me.zhanghai.android.files.vault.VaultPreviewActivity" android:exported="false" />

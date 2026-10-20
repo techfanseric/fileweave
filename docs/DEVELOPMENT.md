@@ -63,8 +63,16 @@ CI 会先安装 SDK Platform 37.2、Build Tools 37.0.0、NDK 30.0.16248370 与 C
 
 ## 0.3 自动发现开发分支
 
-当前开发版本 `0.3.0-dev`，versionCode 43。`BridgeDiscovery` 复用 Android NSD；Swift 通过 NetService 发布 Bonjour，不添加第三方发现服务或后台剪贴板采集。
+0.3.0 开发里程碑版本为 `0.3.0-dev`，versionCode 43。`BridgeDiscovery` 复用 Android NSD；Swift 通过 NetService 发布 Bonjour，不添加第三方发现服务或后台剪贴板采集。
 
 Mac 的 `pairing.py` 管理短期请求、Mac 本地批准、每设备凭据、限流和过期；决定文件仅在权限 0700 的状态目录内传递。手机首次确认两端配对码并完成连接后才保存信任，后续以原证书自动重连。构建已通过，6 个 JVM 测试与 12 个 Python 协议测试通过，lint 0 error / 948 warning。真机发现测试入口为 debug-only `BridgeDiscoveryInstrumentation`，使用现有配对凭据测试发现、错误证书拒绝和失效地址恢复，不操作真实剪贴板或共享文件。
 
 Mac 本机首次发布 Bonjour 可能需要允许系统局域网访问；可查看菜单栏提示和 `mac/.state/discovery.log`。日志不记录令牌、配对 nonce、剪贴板或文件内容。
+
+## 0.3.1 自动操作开发分支
+
+当前开发版本 `0.3.1-dev`，versionCode 44。Android 已删除手动配对表单与外部配对链接入口，状态、发现恢复和共享列表更新由前台自动化循环维护；旧保存的凭据继续有效。Mac 已删除二维码、复制凭据、启停服务和重置菜单，启动后监督子进程并自动恢复。
+
+构建、8 个 JVM 测试、12 个 Python 测试通过，lint 0 error / 942 warning；已覆盖安装真机并通过双端联测，具体覆盖与待观察项见 [验证记录](VALIDATION.md)。TLS 连接清理在专用线程执行，避免恢复连接或销毁页面时在主线程写入 TLS 关闭消息。
+
+`BridgeRetry` 的 JVM 测试覆盖重试间隔增长、30 秒上限与恢复后重置。`scripts/automatic-bridge-smoke.py DEVICE_SERIAL --adb-port PORT` 会在 app 自有共享目录创建并清理随机测试文件，验证列表自动增加／移除，并仅终止当前 FileWeave Mac 的 Python 子进程一次，验证自动拉起和手机恢复；运行前需要打开 Mac 应用，并在手机安装本版本 debug APK、完成首次信任。

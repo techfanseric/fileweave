@@ -4,7 +4,7 @@
 
 以 [Material Files](https://github.com/zhanghai/MaterialFiles) 为基础的 Android 文件管理器，保留原有浏览、文件操作和网络存储体验，新增内置视频播放、文件内容加密保险库及 Android ↔ Mac 文件与文本互通。
 
-开发分支：`0.3.0-dev`（versionCode 43）；最近公开预发布：`0.2.1-dev`。安装标识：`org.fileweave.android`。
+开发分支：`0.3.1-dev`（versionCode 44）；最近公开预发布：`0.2.1-dev`。安装标识：`org.fileweave.android`。
 
 [下载预发布版 APK](https://github.com/techfanseric/fileweave/releases/tag/v0.2.1-dev) · [更新记录](CHANGELOG.md) · [安装与发布说明](docs/RELEASING.md)
 
@@ -16,7 +16,7 @@
 - **文件内容加密**：标准 gocryptfs 格式，AES-256-GCM 内容加密并保护文件名；独立密码、自动锁定、锁定后读取会话失效。
 - **库内查看**：视频按块解密播放；小型图片和 UTF-8 文本在内存预览。预览不先完整导出为明文，敏感窗口禁止系统截图。
 - **备份与恢复**：导出／恢复密文 ZIP；用户主动选择后可导出明文副本。导入不自动删除来源明文。
-- **Mac 配套程序**：局域网发现、首次配对确认与已配对设备自动重连；保留二维码入口、HTTPS 文件传输、共享文件直接播放、主动发送／读取剪贴板文本。
+- **Mac 配套程序**：自动发现、首次信任核对、自动重连与共享列表更新；连接服务异常后自动恢复，提供 HTTPS 文件传输、共享文件直接播放、主动发送／读取剪贴板文本。
 - **保留基础**：Material Files 原有 SMB / SFTP / WebDAV 等存储支持，完整上游历史及原作者署名；已移除 Firebase 接入。
 
 Android 文件列表右上角菜单进入「加密保险库」或「连接 Mac」，文件行菜单可直接加密或发送文件。
