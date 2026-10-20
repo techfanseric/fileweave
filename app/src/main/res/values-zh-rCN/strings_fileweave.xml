@@ -62,4 +62,15 @@
     <string name="fw_vault_export">导出明文副本</string>
     <string name="fw_vault_export_pending">导出所选文件到已选位置</string>
     <string name="fw_vault_export_done">明文副本已导出，此副本不受保险库保护。</string>
+    <string name="fw_bridge_discovering">正在发现局域网内的 FileWeave Mac…只有一台时会自动请求配对，多台时请选择。</string>
+    <string name="fw_bridge_search">重新发现附近 Mac</string>
+    <string name="fw_bridge_manual">使用二维码或配对链接</string>
+    <string name="fw_bridge_wait_approval">与 %1$s 配对\n\n%2$s\n\n请在 Mac 上核对配对码一致并允许。批准前不会获得文件或剪贴板权限，2 分钟后过期。</string>
+    <string name="fw_bridge_discovery_failed">无法发现附近设备。请检查 Wi-Fi 和局域网访问权限，或使用配对链接。</string>
+    <string name="fw_bridge_auto_wait">正在寻找已配对 Mac，发现后会自动连接。</string>
+    <string name="fw_bridge_pair_expired">配对已过期，请重新发现后重试。</string>
+    <string name="fw_bridge_pair_declined">Mac 已拒绝配对。</string>
+    <string name="fw_bridge_pair_busy">Mac 正忙于处理配对，请稍候重新尝试。</string>
+    <string name="fw_bridge_finish_message">配对码：%1$s\n\n只有在你亲自核对 Mac 上的相同配对码并点了允许后，才完成配对。附近设备自行声称已批准，不能证明它就是你的 Mac。</string>
+    <string name="fw_bridge_finish">已在 Mac 核对，完成配对</string>
 </resources>

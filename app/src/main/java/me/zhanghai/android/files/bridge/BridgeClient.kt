@@ -112,8 +112,17 @@ class BridgeClient(val config: BridgeConfig) {
         .apply { name?.let { addQueryParameter("name", it) } }.build()
     fun request(endpoint: String, name: String? = null) = Request.Builder().url(url(endpoint, name))
         .header("Authorization", "Bearer ${config.token}")
-    fun json(endpoint: String): JSONObject = http.newCall(request(endpoint).build()).execute().use { response ->
-        if (!response.isSuccessful) throw IOException("Mac returned ${response.code}")
+    fun json(endpoint: String): JSONObject = readJson(http.newCall(request(endpoint).build()).execute())
+    fun pairingRequest(endpoint: String, payload: JSONObject): JSONObject {
+        require(endpoint == "pair/start" || endpoint == "pair/poll" || endpoint == "pair/cancel")
+        val body = payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+        // Enrollment endpoints carry only an ephemeral nonce, never the saved bearer credential.
+        val call = http.newCall(Request.Builder().url(url(endpoint)).post(body).build())
+        call.timeout().timeout(5, TimeUnit.SECONDS)
+        return readJson(call.execute())
+    }
+    private fun readJson(response: okhttp3.Response): JSONObject = response.use {
+        if (!response.isSuccessful) throw BridgeHttpException(response.code)
         val body = response.body ?: throw IOException("Empty response")
         if (body.contentLength() > 1024 * 1024) throw IOException("Response too large")
         body.byteStream().use { input ->
@@ -160,3 +169,5 @@ class BridgeClient(val config: BridgeConfig) {
     }
     fun close() { http.dispatcher.cancelAll(); http.connectionPool.evictAll() }
 }
+
+class BridgeHttpException(val status: Int) : IOException("Mac returned $status")

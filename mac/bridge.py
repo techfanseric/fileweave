@@ -16,6 +16,7 @@ import subprocess
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit, parse_qs, urlencode
+from pairing import Pairing
 
 MAX_FILE = 8 * 1024**3
 MAX_TEXT = 256 * 1024
@@ -61,6 +62,7 @@ class Bridge(ThreadingHTTPServer):
         os.chmod(key, 0o600)
         der = ssl.PEM_cert_to_DER_cert(self.cert.read_text())
         self.pin = hashlib.sha256(der).hexdigest()
+        self.pairings = Pairing(self.state, self.pin)
         super().__init__(address, Handler)
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         ctx.minimum_version = ssl.TLSVersion.TLSv1_2
@@ -93,7 +95,9 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def authorized(self):
-        if not hmac.compare_digest(self.headers.get('Authorization', ''), 'Bearer ' + self.server.token):
+        credential = self.headers.get('Authorization', '')
+        token = credential[7:] if credential.startswith('Bearer ') else ''
+        if not re.fullmatch(r'[A-Za-z0-9_-]{40,128}', token) or not (hmac.compare_digest(token, self.server.token) or self.server.pairings.authorized(token)):
             self.close_connection = True
             self.json(401, {'error': 'Pairing required'})
             return False
@@ -209,6 +213,21 @@ class Handler(BaseHTTPRequestHandler):
                 yield data
 
     def do_POST(self):
+        endpoint, _ = self.endpoint()
+        if endpoint in ('/v1/pair/start', '/v1/pair/poll', '/v1/pair/cancel'):
+            try:
+                value = json.loads(b''.join(self.body(2048)))
+                if endpoint.endswith('/start'):
+                    status, result = self.server.pairings.start(value['nonce'], value['name'], self.client_address[0])
+                elif endpoint.endswith('/cancel'):
+                    status, result = self.server.pairings.cancel(value['id'], value['nonce'])
+                else:
+                    status, result = self.server.pairings.poll(value['id'], value['nonce'])
+                self.json(status, result)
+            except (ValueError, KeyError, TypeError, OSError, UnicodeError):
+                self.close_connection = True
+                self.json(400, {'error': 'Invalid pairing request'})
+            return
         if not self.authorized():
             return
         temporary = None
@@ -281,6 +300,11 @@ def main():
     pairing.write_text(json.dumps(info))
     os.chmod(pairing, 0o600)
     print(f'FileWeave Mac bridge running on HTTPS port {bridge.server_port}. Pairing is available in the menu bar.', flush=True)
+    def enrollment_events():
+        while True:
+            bridge.pairings.tick()
+            threading.Event().wait(1)
+    threading.Thread(target=enrollment_events, daemon=True).start()
     try:
         bridge.serve_forever()
     finally:

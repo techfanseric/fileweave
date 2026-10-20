@@ -15,6 +15,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <key>CFBundleName</key><string>FileWeave Mac</string>
 <key>CFBundleVersion</key><string>1</string>
 <key>LSUIElement</key><true/>
+<key>NSBonjourServices</key><array><string>_fileweave._tcp</string></array>
 <key>NSLocalNetworkUsageDescription</key><string>FileWeave connects your Android device for files and clipboard text.</string>
 </dict></plist>
 PLIST

@@ -62,4 +62,15 @@ Only approve pairing information obtained directly from your Mac.</string>
     <string name="fw_vault_export">Export plaintext copy</string>
     <string name="fw_vault_export_pending">Export selected file to chosen location</string>
     <string name="fw_vault_export_done">Plaintext copy exported. This copy is not protected by the vault.</string>
+    <string name="fw_bridge_discovering">Searching for FileWeave Macs on this local network… A single Mac will request approval automatically; select one if several appear.</string>
+    <string name="fw_bridge_search">Search again</string>
+    <string name="fw_bridge_manual">Use QR code or pairing link</string>
+    <string name="fw_bridge_wait_approval">Pair with %1$s\n\n%2$s\n\nCompare this code on your Mac, then allow pairing there. No access is granted before approval. Expires in 2 minutes.</string>
+    <string name="fw_bridge_discovery_failed">Discovery unavailable. Check Wi-Fi and local network access, or use a pairing link.</string>
+    <string name="fw_bridge_auto_wait">Waiting for the paired Mac. Discovery will reconnect it when available.</string>
+    <string name="fw_bridge_pair_expired">Pairing expired. Search again to retry.</string>
+    <string name="fw_bridge_pair_declined">The Mac declined pairing.</string>
+    <string name="fw_bridge_pair_busy">The Mac is busy with pairing. Wait a moment and try again.</string>
+    <string name="fw_bridge_finish_message">Code: %1$s\n\nOnly finish if you personally compared this code on your Mac and allowed pairing there. A nearby device claiming approval alone is not proof of identity.</string>
+    <string name="fw_bridge_finish">Verified on my Mac — finish</string>
 </resources>

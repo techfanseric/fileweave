@@ -53,10 +53,18 @@ debug APK 预期输出位置：`app/build/outputs/apk/debug/app-debug.apk`。rel
 
 ## 0.2.1 播放器与发布
 
-当前版本 `0.2.1-dev`，versionCode 42。手势层 `VideoGestureLayout` 在当前布局坐标中锁定方向，普通视频、库内视频和 Mac 视频复用同一个播放界面；未替换 Media3 和底层 DataSource。
+已发布版本 `0.2.1-dev`，versionCode 42。手势层 `VideoGestureLayout` 在当前布局坐标中锁定方向，普通视频、库内视频和 Mac 视频复用同一个播放界面；未替换 Media3 和底层 DataSource。
 
 最后一次 Android 检查：assembleDebug、testDebugUnitTest、lintDebug 均通过，4 个 JVM 测试，lint 0 error / 937 warning。真机 API 36 和模拟器 API 34 均通过横竖屏手势 Instrumentation，详见 [验证记录](VALIDATION.md)。
 
 CI 会先安装 SDK Platform 37.2、Build Tools 37.0.0、NDK 30.0.16248370 与 CMake 3.22.1，再构建四种 ABI 的 native 库；不依赖开发机已有的 NDK。CI 产物使用 runner 的临时 debug 签名，与本机预发布 APK 不保证可覆盖更新。
 
 代码托管及发布流程见 [发布说明](RELEASING.md)。公开预发布 APK 采用已在真机验证的本机 debug 签名；正式签名配置仍为后续工作。
+
+## 0.3 自动发现开发分支
+
+当前开发版本 `0.3.0-dev`，versionCode 43。`BridgeDiscovery` 复用 Android NSD；Swift 通过 NetService 发布 Bonjour，不添加第三方发现服务或后台剪贴板采集。
+
+Mac 的 `pairing.py` 管理短期请求、Mac 本地批准、每设备凭据、限流和过期；决定文件仅在权限 0700 的状态目录内传递。手机首次确认两端配对码并完成连接后才保存信任，后续以原证书自动重连。构建已通过，6 个 JVM 测试与 12 个 Python 协议测试通过，lint 0 error / 948 warning。真机发现测试入口为 debug-only `BridgeDiscoveryInstrumentation`，使用现有配对凭据测试发现、错误证书拒绝和失效地址恢复，不操作真实剪贴板或共享文件。
+
+Mac 本机首次发布 Bonjour 可能需要允许系统局域网访问；可查看菜单栏提示和 `mac/.state/discovery.log`。日志不记录令牌、配对 nonce、剪贴板或文件内容。

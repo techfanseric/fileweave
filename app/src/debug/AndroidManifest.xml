@@ -3,4 +3,6 @@
         android:targetPackage="org.fileweave.android" android:label="FileWeave development checks" />
     <instrumentation android:name="me.zhanghai.android.files.diagnostics.PlayerGestureInstrumentation"
         android:targetPackage="org.fileweave.android" android:label="FileWeave player gesture checks" />
+    <instrumentation android:name="me.zhanghai.android.files.diagnostics.BridgeDiscoveryInstrumentation"
+        android:targetPackage="org.fileweave.android" android:label="FileWeave discovery checks" />
 </manifest>

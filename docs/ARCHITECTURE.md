@@ -28,8 +28,13 @@ Mac Swift 菜单栏程序启动 Python 标准库 HTTPS 服务；只暴露明确�
 
 Android 以固定证书、主机校验与 bearer token 认证每次请求，禁止重定向，以免凭据发送到其他主机。配对配置通过 Android Keystore 的 AES-GCM 加密并存入 noBackupFilesDir。Mac 的证书私钥及配对令牌仅放在权限受限的 `.state/`，由 Git 忽略。
 
+Bonjour 服务类型为 `_fileweave._tcp.`，TXT 仅发布协议版本与证书 SHA-256；地址来自系统解析。Android 串行解析附近服务，已配对设备仅在完整指纹匹配时使用已有凭据自动重连，成功后更新地址。发现随页面进入／离开启动和停止。
+
+首次自动发现配对使用 120 秒内存请求，随机 nonce 绑定 TLS 指纹生成两端核对码。Mac 私有状态目录中的原子请求／决定文件连接 Python 服务与 Swift 弹窗，批准前没有访问令牌；批准后给本次请求发放独立临时 token。Android 还需用户确认已亲自在 Mac 核对并允许，防止陌生广播端自行声称已批准而被静默信任。手机确认后第一次认证请求才把设备 token 持久化在 Mac，手机通过现有 Keystore 保存。取消／超时清理未完成请求，并限制匿名请求数量、速率和正文大小。原二维码链接凭据保持兼容。
+
 协议入口：
 
+- POST /v1/pair/start、/v1/pair/poll、/v1/pair/cancel：无需原访问令牌的限量配对流程；poll/cancel 必须提供本次随机 nonce。
 - GET /v1/status：协议与服务身份。
 - GET /v1/files：共享目录中的普通文件。
 - GET /v1/file?name=：下载，支持 HTTP Range。

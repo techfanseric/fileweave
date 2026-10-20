@@ -1,10 +1,14 @@
 import AppKit
 import CoreImage
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NetServiceDelegate {
     private var statusItem: NSStatusItem!
     private var process: Process?
     private var pairingWindow: NSWindow?
+    private var discovery: NetService?
+    private var discoveryIdentity: String?
+    private var pairingTimer: Timer?
+    private var shownRequests = Set<String>()
     private let base = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
     private var state: URL { base.appendingPathComponent(".state", isDirectory: true) }
 
@@ -29,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         add(menu, "退出 FileWeave", #selector(quit))
         statusItem.menu = menu
         startServer()
+        pairingTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.pollEnrollment() }
     }
     private func add(_ menu: NSMenu, _ title: String, _ action: Selector) {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
@@ -53,7 +58,65 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             process = child
         } catch { alert("服务启动失败", error.localizedDescription) }
     }
-    @objc func stopServer() { if process?.isRunning == true { process?.terminate(); process?.waitUntilExit() }; process = nil }
+    @objc func stopServer() { discovery?.stop(); discovery = nil; discoveryIdentity = nil; shownRequests.removeAll(); if process?.isRunning == true { process?.terminate(); process?.waitUntilExit() }; process = nil }
+    private func pollEnrollment() {
+        guard process?.isRunning == true else {
+            discovery?.stop(); discovery = nil; discoveryIdentity = nil
+            return
+        }
+        if let data = try? Data(contentsOf: state.appendingPathComponent("pairing.json")),
+           let info = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let port = info["port"] as? Int32, let pin = info["pin"] as? String {
+            let identity = "\(pin):\(port)"
+            if discoveryIdentity != identity {
+                discovery?.stop()
+                let service = NetService(domain: "local.", type: "_fileweave._tcp.",
+                                         name: Host.current().localizedName ?? "FileWeave Mac", port: port)
+                service.setTXTRecord(NetService.data(fromTXTRecord: ["v": Data("1".utf8), "pin": Data(pin.utf8)]))
+                service.delegate = self
+                discoveryLog("Starting Bonjour publication")
+                service.publish()
+                discovery = service; discoveryIdentity = identity
+            }
+        }
+        guard let data = try? Data(contentsOf: state.appendingPathComponent("pairing-requests.json")),
+              let requests = try? JSONSerialization.jsonObject(with: data) as? [[String: String]] else { return }
+        shownRequests.formIntersection(Set(requests.compactMap { $0["id"] }))
+        guard let request = requests.first(where: { !shownRequests.contains($0["id"] ?? "") }),
+              let id = request["id"], id.range(of: "^[a-f0-9]{32}$", options: .regularExpression) != nil,
+              let code = request["code"], let name = request["name"], let address = request["address"] else { return }
+        shownRequests.insert(id)
+        let dialog = NSAlert()
+        dialog.messageText = "允许 \(name) 与 FileWeave 配对？"
+        dialog.informativeText = "手机地址：\(address)\n配对码：\(code)\n\n请核对手机上显示的配对码完全一致，再点击允许。批准后此手机可访问共享文件夹并主动操作剪贴板，之后会自动连接。请求 2 分钟后过期。"
+        dialog.addButton(withTitle: "配对码一致，允许")
+        dialog.addButton(withTitle: "拒绝")
+        NSApp.activate(ignoringOtherApps: true)
+        let approved = dialog.runModal() == .alertFirstButtonReturn
+        let destination = state.appendingPathComponent("pairing-decisions/\(id).json")
+        do {
+            let value = try JSONSerialization.data(withJSONObject: ["approved": approved])
+            try value.write(to: destination, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
+        } catch { alert("无法保存配对决定", "请在手机上重试配对。") }
+    }
+    func netServiceDidPublish(_ sender: NetService) {
+        statusItem.button?.toolTip = "FileWeave：局域网自动发现已开启"
+        discoveryLog("Bonjour published")
+    }
+    func netService(_ sender: NetService, didNotPublish errorDict: [String: NSNumber]) {
+        statusItem.button?.toolTip = "局域网发现不可用，请检查系统设置中的局域网访问权限。"
+        discoveryLog("Bonjour publish failed: \(errorDict)")
+    }
+    private func discoveryLog(_ message: String) {
+        let path = state.appendingPathComponent("discovery.log")
+        if !FileManager.default.fileExists(atPath: path.path) {
+            FileManager.default.createFile(atPath: path.path, contents: nil, attributes: [.posixPermissions: 0o600])
+        }
+        if let file = try? FileHandle(forWritingTo: path) {
+            file.seekToEndOfFile(); file.write(Data((message + "\n").utf8)); try? file.close()
+        }
+    }
     private func pairing() -> String? {
         guard process?.isRunning == true,
               let data = try? Data(contentsOf: state.appendingPathComponent("pairing.json")),
@@ -101,17 +164,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.open(folder)
     }
     @objc func resetPairing() {
-        let dialog = NSAlert(); dialog.messageText = "重置配对？"; dialog.informativeText = "现有手机将失去连接，需要重新扫描或粘贴新的配对信息。"
+        let dialog = NSAlert(); dialog.messageText = "重置配对？"; dialog.informativeText = "现有手机将失去连接，需要重新自动发现并批准，或扫描新的配对信息。"
         dialog.addButton(withTitle: "重置"); dialog.addButton(withTitle: "取消")
         guard dialog.runModal() == .alertFirstButtonReturn else { return }
         stopServer()
         try? FileManager.default.removeItem(at: state.appendingPathComponent("credentials.json"))
         try? FileManager.default.removeItem(at: state.appendingPathComponent("pairing.json"))
+        try? FileManager.default.removeItem(at: state.appendingPathComponent("paired-devices.json"))
         pairingWindow?.close(); startServer()
     }
     @objc func openLog() { NSWorkspace.shared.open(state.appendingPathComponent("server.log")) }
     @objc func quit() { NSApp.terminate(nil) }
-    func applicationWillTerminate(_ notification: Notification) { stopServer() }
+    func applicationWillTerminate(_ notification: Notification) { pairingTimer?.invalidate(); stopServer() }
     private func alert(_ title: String, _ text: String) {
         let dialog = NSAlert(); dialog.messageText = title; dialog.informativeText = text; dialog.runModal()
     }
