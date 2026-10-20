@@ -351,6 +351,31 @@
             </intent-filter>
         </activity>
 
+        <activity android:name="me.zhanghai.android.files.viewer.video.VideoViewerActivity"
+            android:exported="true" android:label="@string/fw_video_title"
+            android:theme="@style/Theme.MaterialFiles.Immersive">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+        </activity>
+
+        <activity android:name="me.zhanghai.android.files.bridge.BridgeActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="fileweave" android:host="pair" />
+            </intent-filter>
+        </activity>
+        <activity android:name="me.zhanghai.android.files.viewer.video.BridgeVideoActivity"
+            android:exported="false" android:theme="@style/Theme.MaterialFiles.Immersive" />
+        <activity android:name="me.zhanghai.android.files.vault.VaultPreviewActivity" android:exported="false" />
+        <activity android:name="me.zhanghai.android.files.vault.VaultActivity" android:exported="false" />
+        <activity android:name="me.zhanghai.android.files.viewer.video.VaultVideoActivity"
+            android:exported="false" android:theme="@style/Theme.MaterialFiles.Immersive" />
+
         <service
             android:name="me.zhanghai.android.files.filejob.FileJobService"
             android:foregroundServiceType="specialUse">

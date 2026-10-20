@@ -137,4 +137,6 @@
         android:orderInCategory="100"
         android:title="@string/file_list_action_create_shortcut"
         app:showAsAction="never" />
+    <item android:id="@+id/action_fw_vault" android:title="@string/fw_vault_title" app:showAsAction="never" />
+    <item android:id="@+id/action_fw_bridge" android:title="@string/fw_bridge_title" app:showAsAction="never" />
 </menu>

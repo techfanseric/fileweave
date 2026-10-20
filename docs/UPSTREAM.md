@@ -19,3 +19,5 @@
 本次修改的重点为项目身份、移除 Firebase 接入、立项文档和 CI 命名。上游版权和作者信息保留。关于页面暂时链接到原项目和原作者，发布前增加清晰的分支归属。
 
 内部 versionCode 保留上游的 40，避免现有 AppUpgrader 将后续启动误判为旧版升级；对外 versionName 独立为 0.1.0-dev。
+
+0.2 新增代码组织在 viewer/video、vault、bridge 与 features；新增第三方加密源码单独置于 third_party，并保留 MIT 许可。未修改既有 SMB/SFTP Provider 的实现。内部 versionCode 从 40 递增到 41。

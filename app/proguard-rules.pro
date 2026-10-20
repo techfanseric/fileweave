@@ -55,3 +55,7 @@
 
 # SMBJ-RPC
 -dontwarn java.rmi.UnmarshalException
+
+# Entry constructor and native method names are resolved by JNI.
+-keep class me.zhanghai.android.files.vault.GocryptfsNative { *; }
+-keep class me.zhanghai.android.files.vault.VaultEntry { *; }

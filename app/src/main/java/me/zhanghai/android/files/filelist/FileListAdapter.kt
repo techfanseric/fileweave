@@ -328,6 +328,8 @@ class FileListAdapter(
             listOf(lastModificationTime, size).joinToString(descriptionSeparator)
         }
         val isArchivePath = path.isArchivePath
+        menu.findItem(R.id.action_fw_encrypt).isVisible = !isDirectory && !isArchivePath
+        menu.findItem(R.id.action_fw_send_mac).isVisible = !isDirectory && !isArchivePath
         menu.findItem(R.id.action_copy)
             .setTitle(if (isArchivePath) R.string.file_item_action_extract else R.string.copy)
         menu.findItem(R.id.action_delete).isVisible = !isReadOnly
@@ -337,6 +339,8 @@ class FileListAdapter(
         menu.findItem(R.id.action_add_bookmark).isVisible = isDirectory
         holder.popupMenu.setOnMenuItemClickListener {
             when (it.itemId) {
+                R.id.action_fw_encrypt -> { listener.encryptFile(file); true }
+                R.id.action_fw_send_mac -> { listener.sendToMac(file); true }
                 R.id.action_open_with -> {
                     listener.openFileWith(file)
                     true
@@ -471,6 +475,8 @@ class FileListAdapter(
         fun selectFile(file: FileItem, selected: Boolean)
         fun selectFiles(files: FileItemSet, selected: Boolean)
         fun openFile(file: FileItem)
+        fun encryptFile(file: FileItem)
+        fun sendToMac(file: FileItem)
         fun openFileWith(file: FileItem)
         fun cutFile(file: FileItem)
         fun copyFile(file: FileItem)

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/video_root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:background="@android:color/black">
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/video_toolbar" android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize" android:background="?attr/colorSurface"
+        app:navigationIcon="@drawable/fw_back" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:background="?attr/colorSurface" android:paddingStart="8dp" android:paddingEnd="8dp">
+        <Button android:id="@+id/video_subtitle" android:layout_width="0dp"
+            android:layout_weight="1" android:layout_marginStart="4dp" android:layout_marginEnd="4dp" android:layout_height="wrap_content" android:text="@string/fw_video_subtitle" />
+        <Button android:id="@+id/video_external" android:layout_width="0dp"
+            android:layout_weight="1" android:layout_marginStart="4dp" android:layout_marginEnd="4dp" android:layout_height="wrap_content" android:text="@string/fw_video_external" />
+    </LinearLayout>
+    <androidx.media3.ui.PlayerView android:id="@+id/video_player"
+        android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+        android:keepScreenOn="true" app:show_subtitle_button="true" app:show_buffering="when_playing" />
+    <TextView android:id="@+id/video_error" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:padding="16dp" android:textColor="@android:color/white"
+        android:visibility="gone" android:textIsSelectable="true" />
+    <Button android:id="@+id/video_retry" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:text="@string/fw_retry" android:visibility="gone" />
+</LinearLayout>

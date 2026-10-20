@@ -496,6 +496,12 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
                 viewModel.isViewSortPathSpecific = !menuBinding.viewSortPathSpecificItem.isChecked
                 true
             }
+            R.id.action_fw_vault -> {
+                startActivity(Intent(requireContext(), me.zhanghai.android.files.vault.VaultActivity::class.java)); true
+            }
+            R.id.action_fw_bridge -> {
+                startActivity(Intent(requireContext(), me.zhanghai.android.files.bridge.BridgeActivity::class.java)); true
+            }
             R.id.action_new_task -> {
                 newTask()
                 true
@@ -1253,13 +1259,26 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         navigateTo(file.listablePath)
     }
 
+    override fun encryptFile(file: FileItem) {
+        startActivity(Intent(requireContext(), me.zhanghai.android.files.vault.VaultActivity::class.java).apply { extraPath = file.path })
+    }
+    override fun sendToMac(file: FileItem) {
+        startActivity(Intent(requireContext(), me.zhanghai.android.files.bridge.BridgeActivity::class.java).apply { extraPath = file.path })
+    }
+
     override fun openFileWith(file: FileItem) {
         openFileWithIntent(file, true)
     }
 
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     private fun openFileWithIntent(file: FileItem, withChooser: Boolean) {
         val path = file.path
         val mimeType = file.mimeType
+        if (!withChooser && mimeType.type == "video" && !path.isArchivePath) {
+            startActivitySafe(Intent(requireContext(), me.zhanghai.android.files.viewer.video.VideoViewerActivity::class.java)
+                .setType(mimeType.value).apply { extraPath = path })
+            return
+        }
         if (path.isArchivePath) {
             FileJobService.open(path, mimeType, withChooser, requireContext())
         } else {

@@ -1,0 +1,4 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <instrumentation android:name="me.zhanghai.android.files.diagnostics.SmokeInstrumentation"
+        android:targetPackage="org.fileweave.android" android:label="FileWeave development checks" />
+</manifest>

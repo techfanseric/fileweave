@@ -32,8 +32,12 @@ class OpenFileActivity : AppActivity() {
         finish()
     }
 
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     private fun openFile(path: Path, mimeType: MimeType) {
-        if (path.isArchivePath) {
+        if (mimeType.type == "video" && !path.isArchivePath) {
+            startActivitySafe(Intent(this, me.zhanghai.android.files.viewer.video.VideoViewerActivity::class.java)
+                .setType(mimeType.value).apply { extraPath = path })
+        } else if (path.isArchivePath) {
             FileJobService.open(path, mimeType, false, this)
         } else {
             val intent = path.fileProviderUri.createViewIntent(mimeType)

@@ -8,3 +8,8 @@
 /signing.properties
 .DS_Store
 *.iml
+/third_party/libgocryptfs/build/
+/mac/.state/
+/mac/build/
+
+__pycache__/

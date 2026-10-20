@@ -1,61 +1,41 @@
-# 技术路线
+# 当前技术结构
 
-以下为设计建议，不代表已实现。
+## 文件管理与播放
 
-## 保留基础
+保留 Kotlin、Views / ViewBinding、ViewModel / LiveData 和现有 NIO 文件系统 Provider。`filelist/` 默认把普通视频路由到 `viewer/video/VideoViewerActivity`，保留原有外部打开方式。
 
-沿用 `app` 模块中的 Kotlin、Views / ViewBinding、ViewModel / LiveData 和现有 NIO 文件系统 Provider，不做全量 UI 或 Compose 重写。源码 namespace 保留 `me.zhanghai.android.files`，安装标识独立为 `org.fileweave.android`。
+播放器使用 AndroidX Media3 1.11.1。`PathDataSource` 把 Media3 的位置读取映射到已有 NIO ByteChannel，包括 SMB/SFTP；对可直接访问的 Linux 文件先使用本地只读通道，避免上游将应用私有缓存误判为需要 Root。
 
-优先关注源码位置：
+`BridgeVideoActivity` 是不导出的独立入口，使用证书固定的 OkHttp DataSource。普通外部 VIEW Intent 不能指定保险库读取上下文或接入 Mac 配对凭据。
 
-- `filelist/`：列表与打开文件流程。
-- `file/`：文件类型、URI 和跨应用访问。
-- `provider/`：本地、文档树、SMB、SFTP、WebDAV 等文件系统。
-- `viewer/`：已有查看器，可作为视频功能的组织参照。
-- `filejob/`：后台文件任务、冲突和错误处理。
-- `storage/`：存储源配置与连接入口。
+## 文件内容加密
 
-## 视频
+选型为 MIT 许可的 libgocryptfs，源码版本和改动见 third_party/README.md。复用标准 gocryptfs 配置、AES-256-GCM 分块认证加密、加密文件名和 scrypt（logN 16）密码派生。JNI 仅负责字符串、缓冲区及函数调用转换，不实现密码算法。
 
-候选实现为 Media3 / ExoPlayer 内置播放；先验证本地 content URI，再验证现有网络 Provider 是否能提供带偏移的随机读取。必要时实现适配 `open/read/close` 的 DataSource，将播放请求的 offset 映射到文件读取位置。
+`VaultSession` 串行化所有 native 调用，并以 generation 校验读取会话，锁定先关闭已登记文件句柄再释放加密上下文。不得让 native close 与 read/write 并发或重复关闭句柄。密码只用于解锁，不写入偏好或磁盘。
 
-第一轮优先播放、暂停、拖动、外挂字幕、音轨和播放进度。HDR、特殊编码、字幕复杂度和大码率表现需真机验证；若 Media3 覆盖不足，再评估 libVLC，检查二进制体积与许可。
+密文存于 noBackupFilesDir/vault。导入先写临时密文，再原子重命名；不覆盖重名文件，不删除来源明文。中途锁定或进程终止留下的临时密文在下次解锁清理。
 
-参考：https://developer.android.com/reference/androidx/media3/datasource/DataSource
+`VaultDataSource` 支持长整型偏移和按块读取，供库内视频使用。预览内部入口不导出，FLAG_SECURE 禁止系统截图；离开预览停止并锁定，ProcessLifecycleOwner 也在应用退后台时锁定。密码字段禁用状态保存与自动填充。
 
-## 加密保险库
+小型图片／文本在内存预览；显式明文导出通过系统文档选择器，返回时需要重新解锁。明文一旦导出就不受保险库控制。备份是仅包含密文与配置的标准 ZIP；恢复限制解压大小、条目数和路径，使用 staging 目录，不覆盖已有保险库。
 
-复用成熟、支持随机访问的加密格式，不自创密码算法或容器格式。候选为 DroidFS 使用的 gocryptfs 路线，以及 Cryptomator 格式；前者优先研究 Android 视频路径，后者优先研究 Mac 共用加密库。
+## Mac 文件与文本互通
 
-库选型前完成：Android 可用性、随机读取、文件名保护、Mac 支持、依赖许可和恢复策略验证。不能把整个第三方应用直接当作可嵌入 SDK。
+Mac Swift 菜单栏程序启动 Python 标准库 HTTPS 服务；只暴露明确的 shared 目录和接收用 inbox。默认端口 8787。二维码/链接包含主机、端口、证书 SHA-256 和随机令牌，Android 经明确确认并完成 TLS 请求后保存配对。
 
-保险库应有明确的锁定会话：
+Android 以固定证书、主机校验与 bearer token 认证每次请求，禁止重定向，以免凭据发送到其他主机。配对配置通过 Android Keystore 的 AES-GCM 加密并存入 noBackupFilesDir。Mac 的证书私钥及配对令牌仅放在权限受限的 `.state/`，由 Git 忽略。
 
-- 密码解锁为基础；生物认证仅用于保护本机解锁材料，保留密码恢复路径。
-- 锁定时关闭文件句柄、撤销可撤销的授权、停止播放并释放解密状态。
-- 兼顾后台播放与自动锁定：默认安全锁定；确需后台播放时显示明确状态并由用户启用。
-- 播放、缩略图和字幕处理避免明文磁盘缓存；缩略图要么不缓存，要么随库加密。
-- 导出和分享明文必须由用户明确触发；应用无法阻止外部接收程序另存。
-- 不默认永久暴露保险库到系统 DocumentsProvider。
-- 不承诺删除闪存文件等于物理擦除，不把导入后仍存在的源文件误认为已受保护。
+协议入口：
 
-参考：https://github.com/hardcore-sushi/DroidFS
-参考：https://github.com/cryptomator/android/issues/62
+- GET /v1/status：协议与服务身份。
+- GET /v1/files：共享目录中的普通文件。
+- GET /v1/file?name=：下载，支持 HTTP Range。
+- POST /v1/file?name=：接收文件，支持流式／chunked 请求及原子重名处理。
+- GET /v1/clipboard、POST /v1/clipboard：用户主动触发的文本读写。
 
-## Mac 文件与剪贴板
+剪贴板不轮询、不保存历史。Android 读剪贴板发生在前台按钮操作时，符合普通后台应用不能持续读取剪贴板的系统限制。
 
-阶段一直接使用 Mac SMB 服务与 Android 系统分享入口调用 KDE Connect / LocalSend，不依赖这些应用不存在的嵌入式 SDK，也不宣称已自动配对或接收回调。
+## 当前边界
 
-阶段二若有明确体验缺口，再做 Mac 菜单栏配套程序。候选为 Swift / SwiftUI；文件传输优先评估复用公开协议。自有协议需要配对、设备认证、传输加密、取消和重试；发现设备不等于信任设备。
-
-文本传输和文件共享分别设计。Android 默认采用前台操作或快捷磁贴；Mac 可在用户开启后监测剪贴板变化。默认不保留剪贴板历史，避免自动发送密码和一次性验证码，需处理循环回传、重复文本、离线状态及消息过期。
-
-普通 Android 后台应用读取剪贴板受系统限制，自研也无法保证绕过。Root、ADB 特权或替换输入法不作为默认使用条件。
-
-参考：https://developer.android.com/about/versions/10/privacy/changes#clipboard-data
-参考：https://userbase.kde.org/KDEConnect#Clipboard
-参考：https://github.com/localsend/localsend
-
-## 验证重点
-
-重点验证本地和网络视频拖动、锁定后旧 URI / 文件句柄访问、进程被杀后的明文残留、损坏密文处理、断网取消和重试。互通加密库先做复制与单端修改流程，不默认同时在两端写同一个库。
+尚无指纹解锁、Mac 解锁 gocryptfs、后台队列、断点续传、双向目录同步或互联网中继。Mac 程序当前依赖本机 Python/Swift/OpenSSL 和仓库路径。设备 IP、证书或令牌变化需要重新配对。独立安全审计尚未进行，实际验证范围见 VALIDATION.md。

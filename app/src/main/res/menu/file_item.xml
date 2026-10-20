@@ -54,4 +54,6 @@
     <item
         android:id="@+id/action_properties"
         android:title="@string/file_item_action_properties" />
+    <item android:id="@+id/action_fw_encrypt" android:title="@string/fw_vault_store_action" />
+    <item android:id="@+id/action_fw_send_mac" android:title="@string/fw_bridge_send_action" />
 </menu>
