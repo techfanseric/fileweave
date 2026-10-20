@@ -1,25 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<me.zhanghai.android.files.viewer.video.VideoGestureLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/video_root" android:layout_width="match_parent" android:layout_height="match_parent"
-    android:orientation="vertical" android:background="@android:color/black">
+    android:background="@android:color/black">
+    <androidx.media3.ui.PlayerView android:id="@+id/video_player"
+        android:layout_width="match_parent" android:layout_height="match_parent"
+        android:keepScreenOn="true" app:show_subtitle_button="true" app:show_buffering="when_playing"
+        app:controller_layout_id="@layout/video_controls" app:show_timeout="2500"
+        app:auto_show="false" app:animation_enabled="false" />
     <com.google.android.material.appbar.MaterialToolbar
         android:id="@+id/video_toolbar" android:layout_width="match_parent"
-        android:layout_height="?attr/actionBarSize" android:background="?attr/colorSurface"
-        app:navigationIcon="@drawable/fw_back" />
+        android:layout_height="wrap_content" android:minHeight="56dp" android:background="#99000000"
+        android:visibility="gone" app:titleTextColor="@android:color/white"
+        app:navigationIconTint="@android:color/white" app:navigationIcon="@drawable/fw_back" />
+    <TextView android:id="@+id/video_seek_preview" android:layout_width="wrap_content"
+        android:layout_height="wrap_content" android:layout_gravity="center"
+        android:paddingHorizontal="24dp" android:paddingVertical="12dp" android:gravity="center"
+        android:background="#CC000000" android:textColor="@android:color/white"
+        android:textSize="22sp" android:visibility="gone" android:importantForAccessibility="no" />
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:orientation="horizontal" android:background="?attr/colorSurface" android:paddingStart="8dp" android:paddingEnd="8dp">
-        <Button android:id="@+id/video_subtitle" android:layout_width="0dp"
-            android:layout_weight="1" android:layout_marginStart="4dp" android:layout_marginEnd="4dp" android:layout_height="wrap_content" android:text="@string/fw_video_subtitle" />
-        <Button android:id="@+id/video_external" android:layout_width="0dp"
-            android:layout_weight="1" android:layout_marginStart="4dp" android:layout_marginEnd="4dp" android:layout_height="wrap_content" android:text="@string/fw_video_external" />
+        android:layout_gravity="center" android:orientation="vertical" android:background="#CC000000">
+        <TextView android:id="@+id/video_error" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:padding="16dp" android:textColor="@android:color/white"
+            android:visibility="gone" android:textIsSelectable="true" />
+        <Button android:id="@+id/video_retry" android:layout_width="wrap_content"
+            android:layout_height="wrap_content" android:layout_gravity="center"
+            android:text="@string/fw_retry" android:visibility="gone" />
     </LinearLayout>
-    <androidx.media3.ui.PlayerView android:id="@+id/video_player"
-        android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
-        android:keepScreenOn="true" app:show_subtitle_button="true" app:show_buffering="when_playing" />
-    <TextView android:id="@+id/video_error" android:layout_width="match_parent"
-        android:layout_height="wrap_content" android:padding="16dp" android:textColor="@android:color/white"
-        android:visibility="gone" android:textIsSelectable="true" />
-    <Button android:id="@+id/video_retry" android:layout_width="match_parent"
-        android:layout_height="wrap_content" android:text="@string/fw_retry" android:visibility="gone" />
-</LinearLayout>
+</me.zhanghai.android.files.viewer.video.VideoGestureLayout>

@@ -1,4 +1,4 @@
-# 0.2 开发版验证记录
+# 0.2.1 开发版验证记录
 
 日期：2026-10-20。此记录说明实际完成的验证，不等同于独立安全审计或全设备兼容性认证。
 
@@ -6,8 +6,8 @@
 
 - JDK 21、Gradle 9.6.0、Go 1.26.0。
 - `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug`：通过。
-- JVM 单元测试：2 个通过，覆盖密文备份恢复、不覆盖现有库、解压路径和大小限制。
-- 最后一次 lint：0 个 error，933 条 warning，包含继承的翻译、未使用资源、旧 API 及网络相关检查项。未用 baseline 隐藏本次 lint 错误。
+- JVM 单元测试：4 个通过，覆盖密文备份恢复、不覆盖现有库、解压路径和大小限制，以及长短视频手势进度映射、边界钳制和无效输入。
+- 最后一次 lint：0 个 error，937 条 warning，包含继承的翻译、未使用资源、旧 API 及网络相关检查项。未用 baseline 隐藏本次 lint 错误。
 - 本次发现并修复的 lint 错误：API 23–25 的 autofill 兼容性和 Media3 opt-in 标记。
 - macOS Swift 菜单栏程序：编译及启动通过。
 - Python HTTPS 服务：6 个测试通过，覆盖未配对拒绝、Range、路径／符号链接限制、chunked 上传、重名保护、中文文本读写与超限拒绝。
@@ -29,13 +29,14 @@
 - Mac 局域网证书固定 HTTPS、错误指纹拒绝：通过。
 - 手机上传文本样本、下载 Mac 文件、Mac 视频流式播放：通过。
 - 配对配置 Keystore 加密保存与读取：通过。
-- 普通播放器界面：真机打开验证；针对折叠屏状态栏覆盖补充系统 inset 处理。
+- 播放器手势：真机横竖屏自动化通过。覆盖左／右／顶部／底部区域起手横拖、只显示调节反馈、暂停状态保留、取消、左侧亮度、右侧媒体音量、左右双击 ±10 秒、控件自动隐藏及拖动中退出。亮度仅影响当前窗口；测试后恢复原媒体音量。
+- 新版 0.2.1-dev（42）已通过 ADB 覆盖安装。
 
 Mac 配对地址曾误选 VPN 虚拟地址，导致真机 TLS 连接失败。已改为 macOS 优先枚举物理网络接口，Android 局域网请求显式不使用 HTTP 代理；修复后完成上述局域网测试。
 
 ## Android 模拟器（API 34）
 
-独立只读实例中，本地与加密 MP4 播放／跳转、内容加密、锁定、密文篡改，以及 Mac HTTPS 协议集成测试通过。
+独立只读实例中，本地与加密 MP4 播放／跳转、内容加密、锁定、密文篡改，以及 Mac HTTPS 协议集成测试通过。0.2.1 新增的整套手势横竖屏测试也通过。
 
 模拟器一次普通界面冷启动出现 ANR，后续重试可启动；真机启动与播放未复现。该冷启动性能现象保留为后续排查项，不据此声称 UI 在所有设备上均已稳定。
 
@@ -55,6 +56,12 @@ Mac 配对地址曾误选 VPN 虚拟地址，导致真机 TLS 连接失败。已
 python3 -m unittest discover -s mac -v
 ./mac/run.sh
 python3 scripts/device-smoke.py DEVICE_SERIAL --video /absolute/path/to/generated-test.mp4 --pairing mac/.state/pairing.json
+```
+
+手势回归额外需要将至少 2 分钟的生成 MP4 放入应用缓存 `cache/player-gesture-qa.mp4`，然后运行：
+
+```sh
+adb -s DEVICE_SERIAL shell am instrument -w org.fileweave.android/me.zhanghai.android.files.diagnostics.PlayerGestureInstrumentation
 ```
 
 模拟器可用 `--host 10.0.2.2` 作为测试传输。配对信息及私钥不提交；测试只使用隔离缓存目录。Instrumentation 位于 `src/debug`，不进入 release 构建。

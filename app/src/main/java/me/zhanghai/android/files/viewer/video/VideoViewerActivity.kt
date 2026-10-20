@@ -35,6 +35,7 @@ open class VideoViewerActivity : AppActivity() {
     }
     private var player: ExoPlayer? = null
     private lateinit var playerView: PlayerView
+    private lateinit var gestures: VideoGestureLayout
     private lateinit var errorView: TextView
     private lateinit var retryView: Button
     private var path: Path? = null
@@ -68,37 +69,153 @@ open class VideoViewerActivity : AppActivity() {
         shouldPlay = savedInstanceState?.getBoolean("playing") ?: true
         subtitleUri = savedInstanceState?.getString("subtitle")?.let(Uri::parse)
         setContentView(R.layout.video_viewer_activity)
-        val root = findViewById<View>(R.id.video_root)
-        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
-            val bars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars() or androidx.core.view.WindowInsetsCompat.Type.displayCutout())
-            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-            insets
-        }
-        androidx.core.view.ViewCompat.requestApplyInsets(root)
-        findViewById<MaterialToolbar>(R.id.video_toolbar).apply {
+        gestures = findViewById(R.id.video_root)
+        val root = gestures
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+        val systemUi = androidx.core.view.WindowInsetsControllerCompat(window, root)
+        systemUi.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        systemUi.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        val toolbar = findViewById<MaterialToolbar>(R.id.video_toolbar).apply {
             title = vaultPath?.substringAfterLast('/') ?: path?.fileName?.toString() ?: intent.data?.lastPathSegment ?: getString(R.string.fw_video_title)
             setNavigationOnClickListener { finish() }
         }
         playerView = findViewById(R.id.video_player)
-        playerView.setShowSubtitleButton(true)
+        val preview = findViewById<TextView>(R.id.video_seek_preview)
+        val audio = getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+        volumeControlStream = android.media.AudioManager.STREAM_MUSIC
+        val stream = android.media.AudioManager.STREAM_MUSIC
+        var startPosition = 0L
+        var seekDuration = 0L
+        var seekTarget = 0L
+        var resume = false
+        var brightnessBefore = -1f
+        var startBrightness = .5f
+        var startVolume = 0
+        var maxVolume = 1
+        val dismissFeedback = Runnable { preview.visibility = View.GONE }
+        fun showFeedback(text: String) {
+            preview.removeCallbacks(dismissFeedback)
+            preview.text = text
+            preview.visibility = View.VISIBLE
+        }
+        fun hideChrome() {
+            playerView.hideController()
+            toolbar.visibility = View.GONE
+            systemUi.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        }
+        gestures.isControlHit = { event ->
+            gestures.hits(toolbar, event) || gestures.hits(playerView.findViewById(androidx.media3.ui.R.id.exo_bottom_bar), event)
+        }
+        gestures.listener = object : VideoGestureLayout.Listener {
+            override fun onDown() {
+                player?.let { p -> startPosition = p.currentPosition; seekDuration = p.duration; resume = p.playWhenReady }
+                brightnessBefore = window.attributes.screenBrightness
+                startBrightness = if (brightnessBefore >= 0) brightnessBefore else
+                    (android.provider.Settings.System.getInt(contentResolver, android.provider.Settings.System.SCREEN_BRIGHTNESS, 128) / 255f).coerceIn(.01f, 1f)
+                startVolume = audio.getStreamVolume(stream)
+                maxVolume = audio.getStreamMaxVolume(stream).coerceAtLeast(1)
+            }
+            override fun onStart(kind: VideoGestureLayout.Kind): Boolean {
+                val p = player ?: return false
+                if (kind == VideoGestureLayout.Kind.SEEK) {
+                    if (!p.isCurrentMediaItemSeekable || seekDuration <= 0) return false
+                    seekTarget = startPosition
+                    p.pause()
+                }
+                hideChrome()
+                return true
+            }
+            override fun onMove(kind: VideoGestureLayout.Kind, dx: Float, dy: Float) {
+                when (kind) {
+                    VideoGestureLayout.Kind.SEEK -> {
+                        seekTarget = SeekGesture.target(startPosition, seekDuration, dx, 1)
+                        showFeedback(seekFeedback(seekTarget, seekDuration, seekTarget - startPosition))
+                    }
+                    VideoGestureLayout.Kind.BRIGHTNESS -> {
+                        val value = (startBrightness + dy * 2).coerceIn(.01f, 1f)
+                        window.attributes = window.attributes.apply { screenBrightness = value }
+                        showFeedback(getString(R.string.fw_video_brightness, kotlin.math.round(value * 100).toInt()))
+                    }
+                    VideoGestureLayout.Kind.VOLUME -> {
+                        val value = kotlin.math.round(startVolume + dy * 2 * maxVolume).toInt().coerceIn(0, maxVolume)
+                        try { audio.setStreamVolume(stream, value, 0) } catch (_: SecurityException) { }
+                        showFeedback(getString(R.string.fw_video_volume, audio.getStreamVolume(stream) * 100 / maxVolume))
+                    }
+                }
+            }
+            override fun onEnd(kind: VideoGestureLayout.Kind, commit: Boolean) {
+                when (kind) {
+                    VideoGestureLayout.Kind.SEEK -> player?.let { p ->
+                        if (commit) p.seekTo(seekTarget)
+                        p.playWhenReady = resume
+                    }
+                    VideoGestureLayout.Kind.BRIGHTNESS -> if (!commit) {
+                        window.attributes = window.attributes.apply { screenBrightness = brightnessBefore }
+                    }
+                    VideoGestureLayout.Kind.VOLUME -> if (!commit) {
+                        try { audio.setStreamVolume(stream, startVolume, 0) } catch (_: SecurityException) { }
+                    }
+                }
+                hideChrome()
+                if (commit) preview.postDelayed(dismissFeedback, 500) else dismissFeedback.run()
+            }
+            override fun onTap() {
+                dismissFeedback.run()
+                if (playerView.isControllerFullyVisible) playerView.hideController() else playerView.showController()
+            }
+            override fun onDoubleTap(right: Boolean) {
+                val p = player ?: return
+                if (!p.isCurrentMediaItemSeekable || p.duration <= 0) return
+                val start = p.currentPosition
+                val target = (start + if (right) 10000 else -10000).coerceIn(0, p.duration)
+                p.seekTo(target)
+                hideChrome()
+                showFeedback(seekFeedback(target, p.duration, target - start))
+                preview.postDelayed(dismissFeedback, 650)
+            }
+        }
+        playerView.setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { visibility ->
+            toolbar.visibility = visibility
+        })
+        playerView.hideController()
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
+            val safe = insets.getInsetsIgnoringVisibility(androidx.core.view.WindowInsetsCompat.Type.systemBars() or androidx.core.view.WindowInsetsCompat.Type.displayCutout())
+            toolbar.setPadding(safe.left, safe.top, safe.right, 0)
+            playerView.findViewById<View>(androidx.media3.ui.R.id.exo_controller)
+                ?.setPadding(safe.left, safe.top, safe.right, safe.bottom)
+            insets
+        }
+        androidx.core.view.ViewCompat.requestApplyInsets(root)
         errorView = findViewById(R.id.video_error)
         retryView = findViewById<Button>(R.id.video_retry).apply {
             setOnClickListener { saveAndRelease(); initializePlayer() }
         }
-        if (vaultPath != null) {
-            findViewById<Button>(R.id.video_subtitle).visibility = View.GONE
-            findViewById<Button>(R.id.video_external).visibility = View.GONE
+        if (vaultPath == null) {
+            toolbar.menu.add(R.string.fw_video_subtitle).setOnMenuItemClickListener {
+                subtitlePicker.launch(arrayOf("text/*", "application/x-subrip", "application/octet-stream"))
+                true
+            }
+            toolbar.menu.add(R.string.fw_video_external).setOnMenuItemClickListener {
+                val uri = path?.fileProviderUri ?: intent.data
+                if (uri != null) {
+                    val external = Intent(Intent.ACTION_VIEW).setDataAndType(uri, intent.type ?: "video/*")
+                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    startActivitySafe(Intent.createChooser(external, getString(R.string.fw_video_external))
+                        .putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS, arrayOf(componentName)))
+                }
+                true
+            }
         }
-        findViewById<Button>(R.id.video_subtitle).setOnClickListener {
-            subtitlePicker.launch(arrayOf("text/*", "application/x-subrip", "application/octet-stream"))
-        }
-        findViewById<Button>(R.id.video_external).setOnClickListener {
-            val uri = path?.fileProviderUri ?: intent.data ?: return@setOnClickListener
-            val external = Intent(Intent.ACTION_VIEW).setDataAndType(uri, intent.type ?: "video/*")
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            startActivitySafe(Intent.createChooser(external, getString(R.string.fw_video_external))
-                .putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS, arrayOf(componentName)))
-        }
+        toolbar.overflowIcon?.setTint(android.graphics.Color.WHITE)
+    }
+
+    private fun seekFeedback(target: Long, duration: Long, delta: Long): String =
+        "${formatTime(target)} / ${formatTime(duration)}\n${if (delta >= 0) "+" else "−"}${formatTime(kotlin.math.abs(delta))}"
+
+    private fun formatTime(milliseconds: Long): String {
+        val seconds = milliseconds / 1000
+        return if (seconds >= 3600) java.lang.String.format(java.util.Locale.ROOT, "%d:%02d:%02d", seconds / 3600, seconds / 60 % 60, seconds % 60)
+        else java.lang.String.format(java.util.Locale.ROOT, "%02d:%02d", seconds / 60, seconds % 60)
     }
 
     override fun onStart() { super.onStart(); initializePlayer() }
@@ -166,6 +283,7 @@ open class VideoViewerActivity : AppActivity() {
     }
 
     private fun saveAndRelease() {
+        if (::gestures.isInitialized) gestures.cancelGesture()
         player?.let { p ->
             position = if (p.playbackState == Player.STATE_ENDED) 0 else p.currentPosition.coerceAtLeast(0)
             shouldPlay = p.playWhenReady
@@ -183,6 +301,7 @@ open class VideoViewerActivity : AppActivity() {
     override fun onDestroy() { bridgeClient?.close(); super.onDestroy() }
 
     override fun onSaveInstanceState(outState: Bundle) {
+        if (::gestures.isInitialized) gestures.cancelGesture()
         outState.putLong("position", player?.currentPosition ?: position)
         outState.putBoolean("playing", player?.playWhenReady ?: shouldPlay)
         outState.putString("subtitle", subtitleUri?.toString())

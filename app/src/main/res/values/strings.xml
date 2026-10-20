@@ -806,4 +806,6 @@
 
     <string name="shortcut_downloads_title" translatable="false">@string/navigation_standard_directory_downloads</string>
     <string name="shortcut_ftp_server_title" translatable="false">@string/ftp_server_title</string>
+    <string name="fw_video_brightness">Brightness %1$d%%</string>
+    <string name="fw_video_volume">Volume %1$d%%</string>
 </resources>
