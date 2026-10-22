@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """FileWeave local Mac bridge: authenticated, certificate-pinned HTTPS; no cloud service."""
 import argparse
+import contextlib
 import hashlib
 import hmac
 import json
@@ -13,6 +14,7 @@ import secrets
 import socket
 import ssl
 import subprocess
+import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit, parse_qs, urlencode
@@ -20,6 +22,7 @@ from pairing import Pairing
 
 MAX_FILE = 8 * 1024**3
 MAX_TEXT = 256 * 1024
+MAX_CSR = 8 * 1024
 
 
 class MacClipboard:
@@ -54,15 +57,17 @@ class Bridge(ThreadingHTTPServer):
         self.cert = self.state / 'certificate.pem'
         key = self.state / 'private-key.pem'
         if not self.cert.exists() or not key.exists():
-            subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:3072', '-nodes', '-days', '365',
-                            '-subj', '/CN=FileWeave', '-addext', 'subjectAltName=DNS:localhost,IP:127.0.0.1',
-                            '-addext', 'extendedKeyUsage=serverAuth',
-                            '-keyout', str(key), '-out', str(self.cert)],
-                           check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            with self._restrictive_umask():
+                subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:3072', '-nodes', '-days', '365',
+                                '-subj', '/CN=FileWeave', '-addext', 'subjectAltName=DNS:localhost,IP:127.0.0.1',
+                                '-addext', 'extendedKeyUsage=serverAuth',
+                                '-keyout', str(key), '-out', str(self.cert)],
+                               check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         os.chmod(key, 0o600)
         der = ssl.PEM_cert_to_DER_cert(self.cert.read_text())
         self.pin = hashlib.sha256(der).hexdigest()
         self.pairings = Pairing(self.state, self.pin)
+        self.folder_lock = threading.Lock()
         super().__init__(address, Handler)
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         ctx.minimum_version = ssl.TLSVersion.TLSv1_2
@@ -71,6 +76,50 @@ class Bridge(ThreadingHTTPServer):
 
     def pairing(self, host):
         return 'fileweave://pair?' + urlencode({'host': host, 'port': self.server_port, 'pin': self.pin, 'token': self.token})
+
+    def folder_ca(self):
+        # A dedicated CA for phone folder-share certificates; its key never leaves this Mac.
+        cert, key = self.state / 'folder-ca.crt', self.state / 'folder-ca.key'
+        with self.folder_lock:
+            if not cert.exists() or not key.exists():
+                with self._restrictive_umask():
+                    subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:3072', '-nodes', '-days', '3650',
+                                    '-subj', '/CN=FileWeave Folder CA',
+                                    '-addext', 'basicConstraints=critical,CA:TRUE',
+                                    '-addext', 'keyUsage=critical,keyCertSign,cRLSign',
+                                    '-keyout', str(key), '-out', str(cert)],
+                                   check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                os.chmod(key, 0o600)
+        return cert, key
+
+    def issue_folder_certificate(self, csr):
+        if not isinstance(csr, str) or 'BEGIN CERTIFICATE REQUEST' not in csr or len(csr) > MAX_CSR:
+            raise ValueError('Invalid certificate request')
+        ca_cert, ca_key = self.folder_ca()
+        # Serialized: openssl -CAcreateserial reads and rewrites the .srl file,
+        # so concurrent issuances must not race each other on it.
+        with self.folder_lock:
+            with tempfile.TemporaryDirectory() as workspace:
+                request = Path(workspace) / 'request.csr'
+                issued = Path(workspace) / 'issued.crt'
+                request.write_text(csr)
+                subprocess.run(['openssl', 'x509', '-req', '-in', str(request), '-CA', str(ca_cert),
+                                '-CAkey', str(ca_key), '-days', '825', '-sha256', '-CAcreateserial',
+                                '-out', str(issued)],
+                               check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                pem = issued.read_text()
+        der = ssl.PEM_cert_to_DER_cert(pem)
+        return pem, hashlib.sha256(der).hexdigest()
+
+    @staticmethod
+    @contextlib.contextmanager
+    def _restrictive_umask():
+        # Keys land on disk with the default umask otherwise (0644 until the explicit chmod).
+        previous = os.umask(0o077)
+        try:
+            yield
+        finally:
+            os.umask(previous)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -94,9 +143,12 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def authorized(self):
+    def bearer(self):
         credential = self.headers.get('Authorization', '')
-        token = credential[7:] if credential.startswith('Bearer ') else ''
+        return credential[7:] if credential.startswith('Bearer ') else ''
+
+    def authorized(self):
+        token = self.bearer()
         if not re.fullmatch(r'[A-Za-z0-9_-]{40,128}', token) or not (hmac.compare_digest(token, self.server.token) or self.server.pairings.authorized(token)):
             self.close_connection = True
             self.json(401, {'error': 'Pairing required'})
@@ -227,6 +279,24 @@ class Handler(BaseHTTPRequestHandler):
             except (ValueError, KeyError, TypeError, OSError, UnicodeError):
                 self.close_connection = True
                 self.json(400, {'error': 'Invalid pairing request'})
+            return
+        if endpoint == '/v1/folder-key':
+            token = self.bearer()
+            if not self.authorized():
+                return
+            if hmac.compare_digest(token, self.server.token):
+                self.close_connection = True
+                self.json(403, {'error': 'Device pairing required'})
+                return
+            try:
+                value = json.loads(b''.join(self.body(MAX_CSR)))
+                pem, fingerprint = self.server.issue_folder_certificate(value['csr'])
+                if not self.server.pairings.record_folder_key(token, fingerprint):
+                    raise ValueError('Unknown paired device')
+                self.json(200, {'cert': pem, 'fp': fingerprint})
+            except (ValueError, KeyError, TypeError, OSError, subprocess.SubprocessError):
+                self.close_connection = True
+                self.json(400, {'error': 'Certificate request failed'})
             return
         if not self.authorized():
             return

@@ -11,5 +11,6 @@
 /third_party/libgocryptfs/build/
 /mac/.state/
 /mac/build/
+/mac/.build/
 
 __pycache__/

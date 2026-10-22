@@ -104,18 +104,37 @@ class Pairing:
             return True
 
     def authorized(self, token):
+        return self.device(token) is not None
+
+    def device(self, token):
+        """The paired-device record for a device token, promoting a completed request on first use."""
+        if not isinstance(token, str) or not token:
+            return None
         with self.lock:
-            if any(hmac.compare_digest(token, value['token']) for value in self.devices.values()):
-                return True
+            for value in self.devices.values():
+                if hmac.compare_digest(token, value['token']):
+                    return value
             self._prune()
             for request_id, value in self.pending.items():
                 if value['state'] == 'approved' and hmac.compare_digest(token, value['token']):
                     if len(self.devices) >= 32:
-                        return False
+                        return None
                     self.devices[request_id] = {'name': value['name'], 'token': token}
                     self._write(self.path, self.devices)
-                    return True
-            return False
+                    return self.devices[request_id]
+            return None
+
+    def record_folder_key(self, token, fingerprint):
+        """Bind a phone folder-share certificate fingerprint to the device that presented its token."""
+        if not isinstance(fingerprint, str) or not re.fullmatch(r'[a-f0-9]{64}', fingerprint):
+            raise ValueError('Invalid folder key fingerprint')
+        with self.lock:
+            device = self.device(token)
+            if device is None:
+                return False
+            device['folderFp'] = fingerprint
+            self._write(self.path, self.devices)
+            return True
 
     def tick(self):
         with self.lock:
