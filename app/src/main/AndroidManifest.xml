@@ -362,6 +362,12 @@
         </activity>
 
         <activity android:name="me.zhanghai.android.files.bridge.BridgeActivity" android:exported="false" />
+        <activity
+            android:name="me.zhanghai.android.files.folderbridge.FolderBridgeActivity"
+            android:exported="false"
+            android:label="@string/fw_folder_bridge_title"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.MaterialFiles" />
         <activity android:name="me.zhanghai.android.files.viewer.video.BridgeVideoActivity"
             android:exported="false" android:theme="@style/Theme.MaterialFiles.Immersive" />
         <activity android:name="me.zhanghai.android.files.vault.VaultPreviewActivity" android:exported="false" />
@@ -390,6 +396,29 @@
             android:exported="true"
             android:icon="@drawable/shared_directory_icon_white_24dp"
             android:label="@string/ftp_server_title"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            tools:ignore="NewApi">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="true" />
+        </service>
+
+        <service
+            android:name="me.zhanghai.android.files.folderbridge.FolderBridgeService"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="This is a file manager app offering a local-network folder share for the user's paired computer, and users expect it to keep serving in the background for days or even weeks once they start it and until they manually end it, so that this service has to use specialUse to maintain the user expected behavior of keeping serving the files until manually ended." />
+        </service>
+
+        <service
+            android:name="me.zhanghai.android.files.folderbridge.FolderBridgeTileService"
+            android:exported="true"
+            android:icon="@drawable/audio_icon_white_24dp"
+            android:label="@string/fw_folder_bridge_title"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
             tools:ignore="NewApi">
             <intent-filter>
@@ -431,5 +460,6 @@
         <receiver android:name="me.zhanghai.android.files.filejob.FileJobReceiver" />
 
         <receiver android:name="me.zhanghai.android.files.ftpserver.FtpServerReceiver" />
+        <receiver android:name="me.zhanghai.android.files.folderbridge.FolderBridgeReceiver" />
     </application>
 </manifest>

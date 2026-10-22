@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+  ~ Folder bridge preferences.
+  -->
+
+<PreferenceScreen
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <me.zhanghai.android.files.folderbridge.FolderBridgeStatePreference
+        android:key="folder_bridge_state"
+        android:disableDependentsState="true"
+        android:title="@string/fw_folder_bridge_state_title" />
+
+    <me.zhanghai.android.files.folderbridge.FolderBridgeStatusPreference
+        android:title="@string/fw_folder_bridge_status_title" />
+
+    <PreferenceCategory android:title="@string/fw_folder_bridge_configuration_title">
+
+        <me.zhanghai.android.files.folderbridge.FolderBridgeDirectoryPreference
+            android:key="folder_bridge_directory"
+            android:title="@string/fw_folder_bridge_directory_title" />
+    </PreferenceCategory>
+</PreferenceScreen>

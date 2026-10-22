@@ -65,4 +65,27 @@
     <string name="fw_bridge_finish">已在 Mac 核对，完成配对</string>
     <string name="fw_bridge_choose_mac">选择要使用的 Mac。</string>
     <string name="fw_bridge_reapprove">连接授权已失效，正在重新请求 Mac 批准。</string>
+    <string name="fw_folder_bridge_title">共享录音文件夹给 Mac</string>
+    <string name="fw_folder_bridge_state_title">服务</string>
+    <string name="fw_folder_bridge_state_summary_starting">正在启动…</string>
+    <string name="fw_folder_bridge_state_summary_running">运行中</string>
+    <string name="fw_folder_bridge_state_summary_stopping">正在停止…</string>
+    <string name="fw_folder_bridge_state_summary_stopped">未启动</string>
+    <string name="fw_folder_bridge_status_title">状态</string>
+    <string name="fw_folder_bridge_status_running">正在通过端口 %1$d 共享</string>
+    <string name="fw_folder_bridge_status_error">出错：%1$s</string>
+    <string name="fw_folder_bridge_configuration_title">配置</string>
+    <string name="fw_folder_bridge_directory_title">要共享的文件夹</string>
+    <string name="fw_folder_bridge_directory_none">未选择</string>
+    <string name="fw_folder_bridge_directory_keep_failed">系统未允许在重启后保留该文件夹的访问授权；如果之后共享失效，请重新选择文件夹。</string>
+    <string name="fw_folder_bridge_error_no_directory">请先选择要共享的文件夹。</string>
+    <string name="fw_folder_bridge_error_no_pairing">尚未与 Mac 配对，无法签发证书。请先在「连接 Mac」中完成配对。</string>
+    <string name="fw_folder_bridge_error_issuance">证书签发失败：%1$s</string>
+    <string name="fw_folder_bridge_error_start">启动失败：%1$s</string>
+    <string name="fw_folder_bridge_error_start_unknown">启动失败。</string>
+    <string name="fw_folder_bridge_notification_running">正在通过端口 %1$d 共享</string>
+    <string name="fw_folder_bridge_notification_files">· %1$d 个文件</string>
+    <string name="fw_folder_bridge_notification_nsd_failed">· 自动发现不可用</string>
+    <string name="notification_channel_folder_bridge_name">录音文件夹共享</string>
+    <string name="notification_channel_folder_bridge_description">显示并控制面向 Mac 的录音文件夹共享</string>
 </resources>

@@ -65,4 +65,27 @@
     <string name="fw_bridge_finish">Verified on my Mac — finish</string>
     <string name="fw_bridge_choose_mac">Choose the Mac you want to use.</string>
     <string name="fw_bridge_reapprove">Connection approval expired. Waiting for your Mac to approve again.</string>
+    <string name="fw_folder_bridge_title">Share recordings with Mac</string>
+    <string name="fw_folder_bridge_state_title">Service</string>
+    <string name="fw_folder_bridge_state_summary_starting">Starting…</string>
+    <string name="fw_folder_bridge_state_summary_running">Running</string>
+    <string name="fw_folder_bridge_state_summary_stopping">Stopping…</string>
+    <string name="fw_folder_bridge_state_summary_stopped">Not started</string>
+    <string name="fw_folder_bridge_status_title">Status</string>
+    <string name="fw_folder_bridge_status_running">Serving on port %1$d</string>
+    <string name="fw_folder_bridge_status_error">Error: %1$s</string>
+    <string name="fw_folder_bridge_configuration_title">Configuration</string>
+    <string name="fw_folder_bridge_directory_title">Folder to share</string>
+    <string name="fw_folder_bridge_directory_none">Not chosen</string>
+    <string name="fw_folder_bridge_directory_keep_failed">The system did not allow keeping the folder grant across restarts; if sharing stops working, choose the folder again.</string>
+    <string name="fw_folder_bridge_error_no_directory">Choose a folder to share first.</string>
+    <string name="fw_folder_bridge_error_no_pairing">Not paired with a Mac, so no certificate can be issued. Finish pairing in “Connect to Mac” first.</string>
+    <string name="fw_folder_bridge_error_issuance">Certificate issuance failed: %1$s</string>
+    <string name="fw_folder_bridge_error_start">Failed to start: %1$s</string>
+    <string name="fw_folder_bridge_error_start_unknown">Failed to start.</string>
+    <string name="fw_folder_bridge_notification_running">Serving on port %1$d</string>
+    <string name="fw_folder_bridge_notification_files">· %1$d files</string>
+    <string name="fw_folder_bridge_notification_nsd_failed">· discovery unavailable</string>
+    <string name="notification_channel_folder_bridge_name">Folder bridge</string>
+    <string name="notification_channel_folder_bridge_description">Display and control sharing the recordings folder with the Mac</string>
 </resources>
