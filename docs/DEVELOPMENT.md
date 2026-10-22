@@ -69,6 +69,22 @@ Mac 的 `pairing.py` 管理短期请求、Mac 本地批准、每设备凭据、�
 
 Mac 本机首次发布 Bonjour 可能需要允许系统局域网访问；可查看菜单栏提示和 `mac/.state/discovery.log`。日志不记录令牌、配对 nonce、剪贴板或文件内容。
 
+## 0.4.0 文件夹共享与录音监视开发分支
+
+当前开发版本 `0.4.0-dev`，versionCode 45。Android 新增 `folderbridge` 包（自建 TLS HTTP 内核 + SAF 后端 + AndroidKeyStore/CSR + NSD + specialUse 前台服务），上游文件仅增量（Manifest、NavigationItems、NotificationIds、自有 strings）。Mac 端 `mac/` 重组为 SwiftPM 包（`FileWeaveMacKit` / `FileWeaveMenuBar` / `FileWeaveMacDebug` / 测试），`run.sh` 一键运行不变，`build.sh`/`install.sh` 组装并安装 .app；`bridge.py`、`pairing.py` 与 Python 测试原地保留。
+
+Mac 端新增命令：
+
+```sh
+cd mac
+swift build && swift test     # 包与测试
+./build.sh                    # 组装 build/FileWeave Mac.app（不启动）
+./install.sh                  # 安装到 /Applications 并启动（开发机）
+python3 -m unittest test_folder_key test_pairing test_bridge
+```
+
+代码来源说明：录音面板与转录栈移植自作者本人的 HonorRecorderBar 项目（GPL-3 兼容，保留经验注释），其 ADB 通道、UDP 发现与 recbridge APK 不再使用。
+
 ## 0.3.1 自动操作开发分支
 
 当前开发版本 `0.3.1-dev`，versionCode 44。Android 已删除手动配对表单与外部配对链接入口，状态、发现恢复和共享列表更新由前台自动化循环维护；旧保存的凭据继续有效。Mac 已删除二维码、复制凭据、启停服务和重置菜单，启动后监督子进程并自动恢复。

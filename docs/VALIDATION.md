@@ -1,6 +1,23 @@
 # 验证记录
 
-日期：2026-10-20。此记录说明实际完成的验证，不等同于独立安全审计或全设备兼容性认证。
+日期：2026-10-22。此记录说明实际完成的验证，不等同于独立安全审计或全设备兼容性认证。
+
+## 0.4.0 文件夹共享与录音监视开发分支（脱机部分）
+
+本阶段代码全部为脱机验证；**尚未做任何真机验证**（真机暂不可用），下列真机项全部保留：
+
+- 手机端 TLS 服务器与 Android Keystore KeyManager 的真实握手、向 Mac 请求证书签发的闭环。
+- NSD 双端发现（手机注册 `_fileweave-folder._tcp.`、Mac 浏览并按指纹匹配）。
+- SAF 真实 provider 上的递归列表、`.Trash` 删除／还原闭环（复制＋校验＋删原件语义）。
+- Android 15+ 的 specialUse 前台服务、快速设置磁贴、通知行为。
+- 真实录音目录的扫描性能、转录与 AI 摘要、旧「荣耀录音监视器」数据迁移。
+
+脱机已验证：
+
+- Android `:app:assembleDebug`、`:app:testDebugUnitTest`、`:app:lintDebug`：通过；37 个 JVM 测试（folderbridge 29 个：HTTP 内核鉴权／路由／Range 全边界／头部与正文上限／路径安全／CSR 结构与真实签名、`+` 字面解码、movedAt 缺省），lint 0 error / 973 项结果。
+- Mac `swift build`、`swift test`：30 个测试通过（协议解析含 movedAt=0、配对记录、Bonjour TXT、Content-Range、重连退避、水位线、登录项）；`build.sh` 产出 .app（Info.plist 含两类 Bonjour 服务、LSUIElement；ad-hoc 签名），未启动安装。
+- Python `test_folder_key` / `test_pairing` / `test_bridge`：18 个通过，含 CA 签发链验证、指纹落账与替换、master token 拒绝、并发签发唯一性、超限请求。
+- 两轮独立代码评审（Android 侧、Mac/Python 侧）无 P0 发现；P1（specialUse 服务类型、install.sh 孤儿进程、movedAt=0、迁移清单）与接受的 P2 已全部修复并回归测试。
 
 ## 0.3.1 双端操作简化开发分支
 

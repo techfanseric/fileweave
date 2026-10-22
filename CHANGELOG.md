@@ -1,5 +1,26 @@
 # 更新记录
 
+## 0.4.0-dev — 开发中
+
+合并原独立项目「荣耀录音监视器」，删除其 ADB 通道与无鉴权手机 HTTP 桥接，能力并入 FileWeave 配对体系。
+
+### 手机文件夹共享（Android，`folderbridge`）
+
+- 抽屉菜单新增「共享录音文件夹给 Mac」：SAF 授权一个目录，前台服务（specialUse，与 FTP 服务器同类）对外提供 HTTPS 服务，快速设置磁贴可开关。
+- TLS 证书由 Mac 经已配对通道签发（PKCS#10 CSR，私钥不出 Android Keystore）；所有端点要求配对 Mac 的 Bearer 令牌；NSD 发布 `_fileweave-folder._tcp.`，广播不含凭据。
+- 删除走目录内自建 `.Trash`（复制＋大小校验＋失败回滚），支持还原；下载支持 HTTP Range。
+
+### Mac 菜单栏程序（`mac/` 重组为 SwiftPM 包）
+
+- 左键面板新增「录音」页：浏览／搜索／水位线新增标／回收站删除与还原／下载／本地转录（sherpa-onnx）／显式点击的 AI 摘要（百炼，唯一出网点）。
+- 发现改走 `_fileweave-folder._tcp.` + 配对记录 `folderFp` 指纹匹配；删除 UDP 广播与双通道切换。
+- bridge.py 新增专用 CA 与 `POST /v1/folder-key` 签发端点（仅已配对设备可用）；登录项、`install.sh` 安装与数据自动迁移自旧目录。
+- 原 `mac/MenuBar.swift` 单文件结构移入包内；`run.sh` 体验不变。
+
+### 验证与边界
+
+脱机：Android 37 个 JVM 测试 + lint 0 error，Swift 30 个测试，Python 18 个协议测试，双路代码评审并修复全部 P1。真机回归（TLS 握手、NSD、SAF 回收站、前台服务行为、数据迁移）待设备可用后进行，见 [验证记录](docs/VALIDATION.md)。版本 versionCode 45。
+
 ## 0.3.1-dev — 开发中
 
 - Mac 与 Android 均移除手动配对、搜索、启停、刷新与重置入口；保留首次信任核对和正常文件／剪贴板操作。

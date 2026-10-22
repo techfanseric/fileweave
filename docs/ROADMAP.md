@@ -1,5 +1,13 @@
 # 阶段任务与剩余工作
 
+## 0.4.0 文件夹共享与录音监视开发分支
+
+- [x] 手机侧 `folderbridge`：SAF 目录共享、AndroidKeyStore 私钥 + Mac 签发证书的 TLS 服务、Bearer 鉴权、NSD 发布、`.Trash` 回收站、快速设置磁贴与设置页。
+- [x] Mac 端 `mac/` 重组为 SwiftPM 包：合并原「荣耀录音监视器」面板（浏览／搜索／水位线新增标／回收站／下载／本地转录／AI 摘要），删除 ADB 通道与 UDP 发现，改走配对设备指纹匹配的 `_fileweave-folder._tcp.` 发现。
+- [x] bridge.py 增加专用 CA 与 `POST /v1/folder-key` 证书签发；配对记录新增 `folderFp` 绑定手机服务证书。
+- [x] 脱机验证：Android 37 个 JVM 测试、lint 0 error；Swift 30 个测试；Python 18 个协议测试。
+- [ ] 真机回归：TLS 握手与证书签发闭环、NSD 双端发现、SAF 回收站删除／还原、真实录音扫描与转录、Android 15+ 前台服务与磁贴行为、旧「荣耀录音监视器」数据迁移。
+
 ## 已完成的 0.2 开发版
 
 - [x] 独立应用标识、上游历史与许可、移除 Firebase。
