@@ -1,0 +1,13 @@
+<resources>
+    <string name="fw_bridge_history_title">互通历史</string>
+    <string name="fw_bridge_history_empty">暂无互通记录。与 Mac 之间的剪贴板和文件传输会显示在这里。</string>
+    <string name="fw_bridge_history_clear">清空历史</string>
+    <string name="fw_bridge_history_clear_confirm">确定清空与 Mac 的互通历史？清空后无法恢复。</string>
+    <string name="fw_bridge_history_status_disconnected">未连接</string>
+    <string name="fw_bridge_history_file_sent">发送文件 %1$s · %2$s · %3$s</string>
+    <string name="fw_bridge_history_file_downloaded">下载文件 %1$s · %2$s · %3$s</string>
+    <string name="fw_bridge_history_clipboard_sent">发送剪贴板 %1$s · %2$s</string>
+    <string name="fw_bridge_history_clipboard_received">收到剪贴板 %1$s · %2$s</string>
+    <string name="fw_bridge_history_shared_title">Mac 共享的文件</string>
+    <string name="fw_clipboard_copy_mac">复制 Mac 剪贴板到本机</string>
+</resources>

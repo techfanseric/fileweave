@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fw_bridge_screenshot_sync_title">Push new screenshots to Mac</string>
+    <string name="fw_bridge_screenshot_sync_summary">While the connection is on, automatically send new screenshots of this device to the paired Mac\'s inbox. Only images in the Screenshots folder are shared.</string>
+</resources>

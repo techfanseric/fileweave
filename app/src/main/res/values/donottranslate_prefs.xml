@@ -33,6 +33,18 @@
     <string name="pref_key_ftp_server_writable">key_ftp_server_writable</string>
     <bool name="pref_default_value_ftp_server_writable">true</bool>
 
+    <string name="pref_key_webdav_server_state">key_webdav_server_state</string>
+    <string name="pref_key_webdav_server_anonymous_login">key_webdav_server_anonymous_login</string>
+    <bool name="pref_default_value_webdav_server_anonymous_login">false</bool>
+    <string name="pref_key_webdav_server_username">key_webdav_server_username</string>
+    <string name="pref_default_value_webdav_server_username">admin</string>
+    <string name="pref_key_webdav_server_password">key_webdav_server_password</string>
+    <string name="pref_key_webdav_server_port">key_webdav_server_port</string>
+    <integer name="pref_default_value_webdav_server_port">8080</integer>
+    <string name="pref_key_webdav_server_home_directory">key_webdav_server_home_directory</string>
+    <string name="pref_key_webdav_server_writable">key_webdav_server_writable</string>
+    <bool name="pref_default_value_webdav_server_writable">true</bool>
+
     <string name="pref_key_folder_bridge_directory">key_folder_bridge_directory</string>
 
     <string name="pref_key_locale">key_locale</string>
@@ -84,4 +96,9 @@
     <bool name="pref_visible_show_pdf_thumbnail_pre_28">true</bool>
     <string name="pref_key_read_remote_files_for_thumbnail">key_read_remote_files_for_thumbnail</string>
     <bool name="pref_default_value_read_remote_files_for_thumbnail">true</bool>
+
+    <string name="pref_key_bridge_auto_connect">key_bridge_auto_connect</string>
+    <bool name="pref_default_value_bridge_auto_connect">true</bool>
+    <string name="pref_key_bridge_screenshot_sync">key_bridge_screenshot_sync</string>
+    <bool name="pref_default_value_bridge_screenshot_sync">true</bool>
 </resources>

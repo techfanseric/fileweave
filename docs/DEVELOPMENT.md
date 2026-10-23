@@ -92,3 +92,14 @@ python3 -m unittest test_folder_key test_pairing test_bridge
 构建、8 个 JVM 测试、12 个 Python 测试通过，lint 0 error / 942 warning；已覆盖安装真机并通过双端联测，具体覆盖与待观察项见 [验证记录](VALIDATION.md)。TLS 连接清理在专用线程执行，避免恢复连接或销毁页面时在主线程写入 TLS 关闭消息。
 
 `BridgeRetry` 的 JVM 测试覆盖重试间隔增长、30 秒上限与恢复后重置。`scripts/automatic-bridge-smoke.py DEVICE_SERIAL --adb-port PORT` 会在 app 自有共享目录创建并清理随机测试文件，验证列表自动增加／移除，并仅终止当前 FileWeave Mac 的 Python 子进程一次，验证自动拉起和手机恢复；运行前需要打开 Mac 应用，并在手机安装本版本 debug APK、完成首次信任。
+
+## 真机远程调试约定（2026-10-23 起）
+
+自动化操作真机（adb 驱动 UI、截图 + OCR 定位）期间遵循以下标准，避免与机主正常使用冲突：
+
+- 开始自动化前记录原值：`settings get system screen_brightness`、`screen_brightness_mode`、`screen_off_timeout`。
+- 自动化期间：亮度设为 **30 以下（25）**——机主靠低亮度区分"这是自动化在操作"；锁屏超时设 `3600000`（1 小时）并 `svc power stayon true`——熄屏会令 Activity onStop 取消进行中的配对。
+- 需要机主干预（安装确认、指纹、配对核对等）或归还手机前，**先恢复**原亮度与锁屏设置再交接。
+- 荣耀真机经验：无线 adb 端口会轮换，按 mDNS 等待重连；系统安装确认框需要亮屏解锁时才会显示，锁屏下会自动拒绝；`FLAG_SECURE` 页面无法截图与 uiautomator，需改用 Mac 侧观测。
+- **铁律（2026-10-23 用户定，含真实事故）：禁止在手机桌面/启动器上使用模拟点击**（input tap）。曾因盲点点击误触汽车控制小组件远程解锁了用户的汽车——桌面存在汽车、智能家居等有物理后果的小组件。启动应用只用 intent 方式（`monkey -p <包名> -c android.intent.category.LAUNCHER 1` 或解析 launcher activity 后 `am start`）；返回桌面用 HOME 键事件但不做任何点击。
+- 任何 `input tap` 前必须先有当前界面的新鲜截图并核对坐标，且只允许点在目标应用自己的界面上；禁止坐标盲扫与未确认前台应用时的点击；`FLAG_SECURE` 页面改用 debug instrumentation 进程内控件操作。

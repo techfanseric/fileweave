@@ -4,11 +4,49 @@
 
 合并原独立项目「荣耀录音监视器」，删除其 ADB 通道与无鉴权手机 HTTP 桥接，能力并入 FileWeave 配对体系。
 
+### WebDAV 服务器与 SMB 决策（待真机验收）
+
+- 新增 WebDAV 服务器（`webdavserver/` 包，自研最小协议核零新依赖：OPTIONS/PROPFIND/GET/HEAD/PUT/DELETE/MKCOL/MOVE/COPY、Range、Basic Auth、keep-alive；照 FTP 服务器模式的前台服务与设置页；抽屉入口）。协议核 30 个 JVM 测试含真实 socket 全栈往返与 UTF-8 文件名。
+- SMB 服务器经评估暂缓：无开源 JVM SMB2/3 服务端、Win11 24H2 签名强制、445 特权端口与非 root 冲突（详见 docs/research/android-smb-server-assessment.md）；对外共享由 FTP+WebDAV 覆盖。
+
+### 录音目录自动识别（真机已验证）
+
+- 打开共享开关即用：优先用户显式选择的 SAF 目录；未选择时按 Recordings/Call → Recordings → Sounds → Music/Recordings → Audio/Recordings 顺序探测首个含音频的目录（实测荣耀 MagicOS 命中 Sounds，递归含 CallRecord 通话录音）；探测基于「所有文件访问权限」，新增 File API 后端与 SAF 后端同构（.Trash 复制＋校验语义、路径逃逸双保险），21 个 JVM 测试覆盖。
+- 设置摘要显示「自动识别：目录名」；手动选择仍可覆盖。
+
+### 互通历史（待真机验收）
+
+- 新增 BridgeHistoryStore（应用私有目录 JSON，上限 100 条，只存文件名与 80 字符预览）；「Mac 剪贴板」「Mac 共享文件」两页改造为：一行连接状态 → 紧凑操作区 → 倒序互通历史 → 清空历史；文件传输按实测字节数记录。
+
+### 文件列表与关于页（按用户方向调整，待真机验收）
+
+- 无可用 root 时抽屉不再显示「根目录」项（应用启动后台检测一次，策略为「从不使用 root」时直接隐藏）。
+- 路径面包屑并入标题栏：去掉独立路径行，存储根显示「文件」、进入子目录后标题位置即面包屑导航（可点击逐级返回、长按复制路径），字号统一缩小，移除常驻的文件夹/文件计数副标题，节省一行纵向空间；搜索展开时自动让位，多选模式由不透明工具条自然覆盖。
+- 关于页：作者署名 Eric Yim（链接 github.com/techfanseric），新增「基于 Hai Zhang 的 Material Files」致谢行（链接上游仓库），移除原作者个人主页/Twitter 链接；项目链接指向 github.com/techfanseric/fileweave。
+- 命名去 Mac 化：「Mac 共享文件」抽屉项与页面更名为「共享文件」（文件共享服务局域网内任意设备）。
+
+### 常驻 Mac 互联（按用户方向调整，真机已验证）
+
+- 新增 `BridgeConnectionService` 常驻前台服务：后台自动发现、零接触配对、保持连接、每 5 秒刷新共享文件列表并同步 Mac 剪贴板到本机；设置「保持与 Mac 的连接」默认开启，通知栏「关闭」与设置开关等效，关闭后保持关闭直至重新开启。
+- 剪贴板互通边界：Mac→手机由服务自动写入（后台服务可写剪贴板）；手机→Mac 仍需在前台页面主动发送——系统只允许前台应用读取剪贴板，不承诺后台自动读取。
+- 侧边栏改为以「Mac 剪贴板」「Mac 共享文件」两个入口为先（新增 `ClipboardActivity` 剪贴板页），隐藏原标准目录分类（相册、音乐、视频等；目录本身仍可从文件列表与设置访问）。
+- 原「连接 Mac」页面瘦身为「Mac 共享文件」页：仅承担发送／下载／播放等用户操作，发现与配对全部移入服务；`BridgeActivity` 不再管理发现生命周期。
+
+### 局域网自动配对（真机已验证）
+
+- 手机端：Mac 侧批准后直接保存凭据并连接，不再弹出「已在 Mac 核对」确认对话框；保留单台 Mac 才自动配对、TLS 证书固定与退避限制。
+- Mac 端（bridge.py）：`.state/auto-approve` 标记文件存在时，每个待处理配对请求在 1 秒内自动批准（与弹窗批准共用设备数、频控与 120 秒过期限制），实现零接触配对；删除标记即恢复弹窗人工批准。默认不创建该标记。
+
 ### 手机文件夹共享（Android，`folderbridge`）
 
 - 抽屉菜单新增「共享录音文件夹给 Mac」：SAF 授权一个目录，前台服务（specialUse，与 FTP 服务器同类）对外提供 HTTPS 服务，快速设置磁贴可开关。
 - TLS 证书由 Mac 经已配对通道签发（PKCS#10 CSR，私钥不出 Android Keystore）；所有端点要求配对 Mac 的 Bearer 令牌；NSD 发布 `_fileweave-folder._tcp.`，广播不含凭据。
 - 删除走目录内自建 `.Trash`（复制＋大小校验＋失败回滚），支持还原；下载支持 HTTP Range。
+
+### 真机回归发现并修复的问题
+
+- `folder_bridge` 通知渠道从未注册，启动前台服务即抛 `CannotPostForegroundServiceNotificationException` 崩溃；已加入 `AppInitializers` 渠道创建。
+- AndroidKeyStore 密钥原仅允许 PKCS1 与显式 digest 集合，Conscrypt TLS 服务端握手需要 RSA-PSS 与 NONEwithRSA 上行调用，触发 `INCOMPATIBLE_DIGEST`；密钥规格已改为允许 `DIGEST_NONE`、SHA-256/384/512 与 PKCS1+PSS 填充。
 
 ### Mac 菜单栏程序（`mac/` 重组为 SwiftPM 包）
 

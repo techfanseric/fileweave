@@ -31,6 +31,10 @@ class FolderBridgeSafBackend(context: Context, private val tree: Uri) :
 
     private val resolver = context.contentResolver
 
+    /** 用户授权的共享树；仅供同包的 FolderBridgeObserver 推导 MediaStore 过滤前缀使用。 */
+    val treeUri: Uri
+        get() = tree
+
     override val rootName: String
         get() = FolderBridgePaths.rootNameOf(DocumentsContract.getTreeDocumentId(tree))
 

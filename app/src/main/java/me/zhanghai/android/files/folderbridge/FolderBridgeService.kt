@@ -33,8 +33,10 @@ import java.util.concurrent.Executors
 /**
  * Foreground service running the folder bridge TLS server and its NSD registration.
  *
- * Startup order: chosen directory -> certificate (enrolling via the paired Mac when missing,
- * with a visible error state on failure, never silent) -> SSLContext -> server thread -> NSD.
+ * Startup order: shared directory (the user-chosen SAF tree, or the auto-detected recordings
+ * folder once all-files access is granted) -> certificate (enrolling via the paired Mac when
+ * missing, with a visible error state on failure, never silent) -> SSLContext -> server thread
+ * -> NSD.
  *
  * The service type is specialUse, mirroring FtpServerService: this share is expected to stay
  * up for days, which the dataSync six-hour quota on Android 15+ would cut off mid-use.
@@ -59,6 +61,8 @@ class FolderBridgeService : Service() {
     private var server: FolderBridgeServer? = null
 
     private var nsd: FolderBridgeNsd? = null
+
+    private var observer: FolderBridgeObserver? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -118,12 +122,22 @@ class FolderBridgeService : Service() {
         if (server != null) {
             return
         }
+        // 目录决策顺序：用户显式选择的 SAF 目录优先；未选择时若已授予所有文件访问
+        // 权限且自动识别命中厂商默认录音目录，改用 File 后端直接访问；两者皆无才报错，
+        // 文案引导授权或手动选择。
         val tree = FolderBridgeSettings.getTreeUri(this)
-        if (tree == null) {
-            mainExecutorCompat.execute {
-                onStartError(getString(R.string.fw_folder_bridge_error_no_directory))
+        val backend: FolderBridgeBackend
+        if (tree != null) {
+            backend = FolderBridgeSafBackend(this, tree)
+        } else {
+            val defaultDirectory = FolderBridgeDefaults.detect()
+            if (defaultDirectory == null) {
+                mainExecutorCompat.execute {
+                    onStartError(getString(R.string.fw_folder_bridge_error_no_directory_auto))
+                }
+                return
             }
-            return
+            backend = FolderBridgeFileBackend(defaultDirectory)
         }
 
         // Enrollment happens synchronously here: without a Mac-issued certificate the TLS server
@@ -160,7 +174,6 @@ class FolderBridgeService : Service() {
             }
             return
         }
-        val backend = FolderBridgeSafBackend(this, tree)
         val kernel = FolderBridgeKernel(backend, token, Build.MODEL)
         kernel.onScan = { count ->
             mainExecutorCompat.execute {
@@ -193,6 +206,12 @@ class FolderBridgeService : Service() {
             }
             return
         }
+
+        // 录音实时性：server 已可服务后启动观察者，新录音秒级推给 Mac（见 FolderBridgeObserver，
+        // 失败静默、绝不占用 server 的线程）。此处只接线，观察者生命周期与本服务一致。
+        val observer = FolderBridgeObserver(this, backend)
+        observer.start()
+        this.observer = observer
 
         val nsd = FolderBridgeNsd(this)
         this.nsd = nsd
@@ -239,6 +258,8 @@ class FolderBridgeService : Service() {
     private fun doStop() {
         nsd?.stop()
         nsd = null
+        observer?.stop()
+        observer = null
         server?.stop()
         server = null
         postStatus(Status(State.STOPPED))
@@ -359,7 +380,7 @@ class FolderBridgeNsd(private val context: Context) {
     }
 }
 
-private val folderBridgeServiceNotificationTemplate =
+internal val folderBridgeServiceNotificationTemplate =
     NotificationTemplate(
         NotificationChannelTemplate(
             "folder_bridge",

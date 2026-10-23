@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<resources>
+    <string name="webdav_server_title">WebDAV 服务器</string>
+    <string name="webdav_server_state_title">状态</string>
+    <string name="webdav_server_state_summary_starting">正在启动…</string>
+    <string name="webdav_server_state_summary_running">正在运行</string>
+    <string name="webdav_server_state_summary_stopping">正在停止…</string>
+    <string name="webdav_server_state_summary_stopped">未启动</string>
+    <string name="webdav_server_url_title">网址</string>
+    <string name="webdav_server_url_summary_no_local_inet_address">本地 IP 地址未知</string>
+    <string name="webdav_server_url_menu_copy_url">复制网址</string>
+    <string name="webdav_server_url_menu_copy_password">复制密码</string>
+    <string name="webdav_server_configuration_title">配置</string>
+    <string name="webdav_server_anonymous_login_title">匿名访问</string>
+    <string name="webdav_server_anonymous_login_summary">无需用户名和密码，仅在可信网络中开启。凭据与文件均以明文在局域网传输，与 FTP 服务器一致。</string>
+    <string name="webdav_server_username_title">用户名</string>
+    <string name="webdav_server_password_title">密码</string>
+    <string name="webdav_server_port_title">端口</string>
+    <string name="webdav_server_home_directory_title">根文件夹</string>
+    <string name="webdav_server_writable_title">允许写入</string>
+    <string name="webdav_server_writable_summary">关闭后仅允许读取（只读挂载）</string>
+    <string name="notification_channel_webdav_server_name">WebDAV 服务器</string>
+    <string name="notification_channel_webdav_server_description">显示并控制 WebDAV 服务器</string>
+</resources>

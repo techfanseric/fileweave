@@ -28,7 +28,7 @@
     <string name="fw_working">正在处理，请保持此页面打开。</string>
     <string name="fw_operation_failed">操作失败</string>
     <string name="fw_vault_store_action">加密存入保险库</string>
-    <string name="fw_bridge_title">连接 Mac</string>
+    <string name="fw_bridge_title">共享文件</string>
     <string name="fw_bridge_send_action">发送到 Mac</string>
     <string name="fw_bridge_trust">与 %1$s 配对</string>
     <string name="fw_bridge_ready">正在自动连接…</string>
@@ -88,4 +88,23 @@
     <string name="fw_folder_bridge_notification_nsd_failed">· 自动发现不可用</string>
     <string name="notification_channel_folder_bridge_name">录音文件夹共享</string>
     <string name="notification_channel_folder_bridge_description">显示并控制面向 Mac 的录音文件夹共享</string>
+    <string name="fw_navigation_mac_clipboard">Mac 剪贴板</string>
+    <string name="fw_navigation_mac_shared">共享文件</string>
+    <string name="fw_bridge_settings_title">Mac 互联</string>
+    <string name="fw_bridge_auto_connect_title">保持与 Mac 的连接</string>
+    <string name="fw_bridge_auto_connect_summary">后台自动发现、配对并保持与 Mac 的连接，同步剪贴板与共享文件列表；关闭后保持关闭，直到重新打开。</string>
+    <string name="fw_bridge_connection_title">Mac 连接</string>
+    <string name="fw_bridge_connection_connected">已连接 %1$s</string>
+    <string name="fw_bridge_connection_pairing">正在与 Mac 配对…</string>
+    <string name="fw_bridge_connection_retrying">正在重新连接…</string>
+    <string name="fw_bridge_connection_finding">正在寻找你的 Mac…</string>
+    <string name="fw_bridge_connection_disable">关闭</string>
+    <string name="fw_bridge_connection_disabled">已关闭 Mac 连接</string>
+    <string name="notification_channel_bridge_connection_name">Mac 连接</string>
+    <string name="notification_channel_bridge_connection_description">显示并控制与配对 Mac 的常驻连接</string>
+    <string name="fw_clipboard_title">Mac 剪贴板</string>
+    <string name="fw_clipboard_not_connected">尚未连接 Mac；连接建立后会自动可用。</string>
+    <string name="fw_clipboard_mac_preview">Mac 当前剪贴板：</string>
+    <string name="fw_clipboard_refresh">刷新 Mac 剪贴板</string>
+    <string name="fw_clipboard_copied">已复制到本机</string>
 </resources>

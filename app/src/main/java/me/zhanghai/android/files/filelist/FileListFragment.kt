@@ -219,7 +219,9 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         }
         navigationFragment.listener = this
         val activity = requireActivity() as AppCompatActivity
-        activity.setTitle(R.string.file_list_title)
+        // The path breadcrumb overlaid in the toolbar replaces the fixed title line, so the
+        // title stays empty and vertical space is saved.
+        activity.setTitle("")
         activity.setSupportActionBar(binding.toolbar)
         overlayActionMode = OverlayToolbarActionMode(binding.overlayToolbar, binding.toolbar)
         bottomActionMode = PersistentBarLayoutToolbarActionMode(
@@ -345,7 +347,14 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
             onSearchViewExpandedChanged(it)
         }
         viewModel.breadcrumbLiveData.observe(viewLifecycleOwner) {
-            binding.breadcrumbLayout.setData(it)
+            // At a storage root the single breadcrumb segment reads as the app title
+            // ("文件") rather than the storage name, keeping the toolbar familiar.
+            val data = if (it.paths.size == 1) {
+                it.copy(nameProducers = listOf { context -> context.getString(R.string.file_list_title) })
+            } else {
+                it
+            }
+            binding.breadcrumbLayout.setData(data)
         }
         viewModel.viewTypeLiveData.observe(viewLifecycleOwner) { onViewTypeChanged(it) }
         // Live data only calls observeForever() on its sources when it is active, so we have to
@@ -395,6 +404,7 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         // resets the query.
         searchView.setOnSearchClickListener {
             viewModel.isSearchViewExpanded = true
+            binding.breadcrumbLayout.isVisible = false
             searchView.setQuery(viewModel.searchViewQuery, false)
             debouncedSearchRunnable()
         }
@@ -405,6 +415,7 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
             override fun onMenuItemActionCollapse(item: MenuItem): Boolean {
                 viewModel.isSearchViewExpanded = false
                 viewModel.stopSearching()
+                binding.breadcrumbLayout.isVisible = true
                 return true
             }
         })
@@ -598,7 +609,9 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         when {
             stateful is Failure -> binding.toolbar.setSubtitle(R.string.error)
             stateful is Loading && !isSearching -> binding.toolbar.setSubtitle(R.string.loading)
-            else -> binding.toolbar.subtitle = getSubtitle(files!!)
+            // The count subtitle is dropped: the breadcrumb owns the toolbar now and the list
+            // itself already shows what is in it.
+            else -> binding.toolbar.subtitle = null
         }
         val hasFiles = !files.isNullOrEmpty()
         binding.swipeRefreshLayout.isRefreshing = stateful is Loading && (hasFiles || isSearching)

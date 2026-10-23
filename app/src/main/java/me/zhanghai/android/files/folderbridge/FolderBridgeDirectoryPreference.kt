@@ -53,7 +53,14 @@ class FolderBridgeDirectoryPreference : Preference {
 
     private fun onDirectoryChanged(value: String?) {
         summary = if (value.isNullOrEmpty()) {
-            context.getString(R.string.fw_folder_bridge_directory_none)
+            // 未手动选择时展示自动识别结果（已授予所有文件访问权限且探测命中才会出现），
+            // 让用户知道打开开关即可用；探测只是少量目录存在性检查。
+            val detected = FolderBridgeDefaults.detect()
+            if (detected != null) {
+                context.getString(R.string.fw_folder_bridge_directory_auto, detected.name)
+            } else {
+                context.getString(R.string.fw_folder_bridge_directory_none)
+            }
         } else {
             try {
                 val documentId = android.provider.DocumentsContract.getTreeDocumentId(

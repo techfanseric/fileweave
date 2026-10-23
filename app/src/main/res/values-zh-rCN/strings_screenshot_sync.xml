@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fw_bridge_screenshot_sync_title">自动推送新截屏到 Mac</string>
+    <string name="fw_bridge_screenshot_sync_summary">保持连接时，自动把本机新截屏发送到配对 Mac 的收件箱；只发送 Screenshots 目录中的图片。</string>
+</resources>

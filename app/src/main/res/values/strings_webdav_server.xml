@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<resources>
+    <string name="webdav_server_title">WebDAV server</string>
+    <string name="webdav_server_state_title">Status</string>
+    <string name="webdav_server_state_summary_starting">Starting…</string>
+    <string name="webdav_server_state_summary_running">Running</string>
+    <string name="webdav_server_state_summary_stopping">Stopping…</string>
+    <string name="webdav_server_state_summary_stopped">Not started</string>
+    <string name="webdav_server_url_title">URL</string>
+    <string name="webdav_server_url_summary_no_local_inet_address">Local IP address is unknown</string>
+    <string name="webdav_server_url_menu_copy_url">Copy URL</string>
+    <string name="webdav_server_url_menu_copy_password">Copy password</string>
+    <string name="webdav_server_configuration_title">Configuration</string>
+    <string name="webdav_server_anonymous_login_title">Anonymous access</string>
+    <string name="webdav_server_anonymous_login_summary">No username or password required. Only enable on trusted networks.</string>
+    <string name="webdav_server_username_title">Username</string>
+    <string name="webdav_server_password_title">Password</string>
+    <string name="webdav_server_port_title">Port</string>
+    <string name="webdav_server_home_directory_title">Root folder</string>
+    <string name="webdav_server_writable_title">Allow writing</string>
+    <string name="webdav_server_writable_summary">Turn off to serve files read-only</string>
+    <string name="webdav_server_notification_title" translatable="false">@string/webdav_server_title</string>
+    <string name="webdav_server_notification_text_no_local_inet_address" translatable="false">@string/webdav_server_url_summary_no_local_inet_address</string>
+    <string name="notification_channel_webdav_server_name">WebDAV server</string>
+    <string name="notification_channel_webdav_server_description">Display and control the WebDAV server</string>
+    <string name="navigation_webdav_server" translatable="false">@string/webdav_server_title</string>
+</resources>

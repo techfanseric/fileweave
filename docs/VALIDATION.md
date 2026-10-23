@@ -1,10 +1,57 @@
 # 验证记录
 
-日期：2026-10-22。此记录说明实际完成的验证，不等同于独立安全审计或全设备兼容性认证。
+日期：2026-10-22 起，10-23 更新。此记录说明实际完成的验证，不等同于独立安全审计或全设备兼容性认证。
+
+## 0.4.0 真机回归（10-23，主体通过）
+
+环境与网络：用户重组网（FlClash→Tailscale）后手机↔Mac 局域网互通恢复；bridge.py + `dns-sd -R` 替代菜单栏程序（Xcode 仍缺失）。
+
+VER-AN10 / API 36 / MagicOS 上全部通过：
+
+- **零接触配对闭环**（含 pm clear 后从零恢复共 4 轮）：NSD 发现→pair/start→auto-approve（标记文件）→poll→自动保存→自动连接，全程无人工点击。
+- **常驻连接服务**：应用启动即自启（设置默认开），通知渠道 bridge_connection 注册并显示状态；手机↔Mac 8787 持久连接（netstat ESTABLISHED 验证）。
+- **Mac→手机剪贴板自动同步端到端**：Mac 侧 POST /v1/clipboard 写入标记文本，≤5 秒后手机系统剪贴板持有该文本（搜索框长按粘贴菜单直接显示）。
+- **抽屉重构**：Mac 剪贴板／Mac 共享文件两个入口就位，标准目录分类已移除；ClipboardActivity/BridgeActivity 的 FLAG_SECURE 均按设计拒绝截图。
+- **文件夹共享 TLS 链路**：软件密钥（见下）+ Mac CA 签发 + TLS 1.3 握手成功；服务端证书 SHA-256 与 paired-devices.json folderFp 一致（等价产品端指纹固定）。
+- **协议回归（curl 全量）**：/v1/status、/v1/tree（录音过滤、.Trash 元数据 movedAt/trashPath）、完整下载 MD5 与原件一致、Range 206 且字节一致、无鉴权/错 token 401、路径穿越 400、删除（复制＋移原件）与还原（内容逐字节一致）闭环。
+- **FGS**：specialUse（types=0x40000000）isForeground=true 稳定运行，通知含文件计数实时更新。
+- 快速设置磁贴代码在位但未加入磁贴面板（需用户在 QS 编辑中拖入），待后续人工确认。
+
+真机抓到并修复的缺陷（均回归验证）：
+
+1. `folder_bridge` 通知渠道未注册 → `CannotPostForegroundServiceNotificationException` 崩溃；已加入 AppInitializers 渠道创建。
+2. AndroidKeyStore 硬件 RSA 密钥无法完成 TLS 服务端握手：本机 Conscrypt 经 `RSA/ECB/NoPadding` 原始 Cipher 上行调用签名，keystore 不支持原始 NoPadding（INCOMPATIBLE_PADDING/DIGEST），任何密钥规格都无法满足；已改为应用私有目录（文件级加密保护）中的软件 RSA 密钥对，CSR 签发流程不变，代码注释记录取舍。
+3. 软件密钥首版从私钥推导公钥在部分 KeyFactory 上失败（"Local key missing"）；改为公钥 SPKI 独立文件保存。
+
+未完成/待验证（2026-10-23 深夜交接，下一台机器继续）：
+
+- 全部新功能已实现并集成：录音目录自动识别（真机已验）、互通历史页、截屏自动互通、录音实时推送（bridge.py /v1/notify + folder-events.jsonl）、WebDAV 服务器、SMB 评估暂缓、UI 改版（标题面包屑/根目录隐藏/关于页署名/「共享文件」改名）。**104 个 JVM 测试全绿、lint 0 error、Python 22 个测试通过。**
+- 最终真机安装与验收被网络阻塞：手机已切热点网，与开发机仅剩 Tailscale 中继且断连。**最新 APK（36,677,261 字节，MD5 5d8db9a7b275c954b918d5147ad2328b）已完整送达手机 `/data/local/tmp/app-debug.apk`**；手机回到与开发机同网后执行 `adb shell pm install -r /data/local/tmp/app-debug.apk` 完成安装（此前已确认同签名可无人值守安装）。
+- 待验收清单：WebDAV（开服务→PROPFIND/GET/PUT→Finder Cmd+K 挂载）；截屏互通（`adb shell input keyevent 120` 触发截屏→查 mac/.state/inbox/）；录音实时事件（共享目录出现新音频→查 mac/.state/folder-events.jsonl；勿对真实 Sounds 写入测试文件）；UI 四项（抽屉无「根目录」、标题面包屑、关于页署名、共享文件改名）截图确认。
+- 手机设置仍为调试态（亮度 25、锁屏超时 1 小时）；验收完成后恢复原值：亮度 52+自动（`settings put system screen_brightness_mode 1; settings put system screen_brightness 52`）、锁屏 30 秒（`settings put system screen_off_timeout 30000`）。
+- Mac 端菜单栏程序、转录、旧数据迁移仍等 Xcode；本机桥为 bridge.py + `dns-sd -R` 替代运行，新机器需自行拉起（见 docs/DEVELOPMENT.md）。
+
+## 0.4.0 真机回归（第一晚，部分完成）
+
+开发机环境在 10-22 晚间被整体重置（JDK 21、Android SDK/NDK、Go、Xcode、`~/.android` 旧调试密钥与 `mac/.state/` 配对数据全部丢失）。已重装 JDK 21（Homebrew openjdk@21）、SDK Platform 37.2 / Build-Tools 37.0.0 / NDK 30.0.16248370 / CMake 3.22.1 与 Go 1.27，`:app:assembleDebug` 通过并产出 0.4.0-dev（45）；Python 协议测试 18 个通过；Maven Central 对本机 IP 返回 403，经 `~/.gradle/init.gradle` 配置阿里云镜像解决（机器级配置，未改仓库）。
+
+已完成的真机验证（VER-AN10 / API 36）：
+
+- 0.4.0-dev（45）安装成功。旧 0.3.1-dev（44）因旧调试密钥随环境丢失而无法覆盖安装；经 run-as 核实应用数据仅有已失效的旧配对配置、无保险库数据后卸载重装，未触碰用户其他数据。
+- 手机侧 NSD 发现与配对协议：`BridgeActivity` 打开后经 `_fileweave._tcp.` 发现 Mac（bridge.py 独立运行 + `dns-sd -R` 代替 Swift 菜单栏程序发布），TLS 固定证书连接、`pair/start`/`pair/poll` 与 Mac 侧决定文件批准全部按预期工作，当晚共 9 轮请求全部完成批准（含双方核对码生成）。
+- `FLAG_SECURE` 安全行为在真机确认：连接页面截图与 uiautomator 转储均被拒绝，符合设计。
+
+阻塞项与原始原因（均未绕过、未声称通过）：
+
+- 首次信任需要手机端点击「已在 Mac 核对，完成配对」。荣耀 MagicOS 的多层防护使远程点击不可行：安全安装确认对话框忽略注入触控并阻止独立测试 APK（`INSTALL_FAILED_ABORTED`，`pm install -t` 同样被拒）；配对确认对话框属 FLAG_SECURE 窗口；crash 日志经 Honor 密钥加密不可读；手机上残留的投屏虚拟显示器反复触发 Activity 重建（`Performing restart`，锁定刷新率后仍复现），重建会取消进行中的配对。需要用户在场手动点击一次完成；未为绕过该人工确认修改任何产品代码。
+- Xcode 已被卸载，Command Line Tools 不含 SwiftUI 宏插件（`SwiftUIMacros` plugin not found），`swift build`/`swift test` 无法编译菜单栏程序；Mac 面板发现、录音浏览、转录、AI 摘要与旧数据迁移启动项全部保留待 Xcode 恢复。
+- 迁移测试准备就绪：`~/Library/Application Support/HonorRecorderBar` 已按旧项目（techfanseric/HonorRecorderBar）格式合成 library.json（含 pendingNew 旧账本）、transcripts 侧车、asr 与 bailian.env 占位（假密钥）；`FileWeave` 新目录确认不存在，首次启动即触发迁移。
+
+辅助调试设施（机器级，未提交）：`mac/.state` 由 bridge.py 重建；自动批准观察器与 `dns-sd` 发布进程按 0.3.1 联测方式运行；Vision OCR（`/tmp/ocr.swift`）用于定位系统界面元素。仓库内新增 debug-only `FolderBridgePairingInstrumentation`（app/src/debug，模式同既有三个 instrumentation，随主 APK 分发），预期在安装确认可完成后替代人工点击，**该 instrumentation 尚未在真机运行过，未验证**。
 
 ## 0.4.0 文件夹共享与录音监视开发分支（脱机部分）
 
-本阶段代码全部为脱机验证；**尚未做任何真机验证**（真机暂不可用），下列真机项全部保留：
+本阶段代码完成时全部为脱机验证（真机进展见上方「0.4.0 真机回归（第一晚）」），下列真机项仍保留：
 
 - 手机端 TLS 服务器与 Android Keystore KeyManager 的真实握手、向 Mac 请求证书签发的闭环。
 - NSD 双端发现（手机注册 `_fileweave-folder._tcp.`、Mac 浏览并按指纹匹配）。

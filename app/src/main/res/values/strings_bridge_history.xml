@@ -1,0 +1,13 @@
+<resources>
+    <string name="fw_bridge_history_title">Recent activity</string>
+    <string name="fw_bridge_history_empty">Nothing here yet. Clipboard and file transfers between this phone and the Mac will be listed here.</string>
+    <string name="fw_bridge_history_clear">Clear history</string>
+    <string name="fw_bridge_history_clear_confirm">Clear the transfer history with the Mac? This cannot be undone.</string>
+    <string name="fw_bridge_history_status_disconnected">Not connected</string>
+    <string name="fw_bridge_history_file_sent">Sent file %1$s · %2$s · %3$s</string>
+    <string name="fw_bridge_history_file_downloaded">Downloaded %1$s · %2$s · %3$s</string>
+    <string name="fw_bridge_history_clipboard_sent">Sent clipboard %1$s · %2$s</string>
+    <string name="fw_bridge_history_clipboard_received">Received clipboard %1$s · %2$s</string>
+    <string name="fw_bridge_history_shared_title">Files shared by the Mac</string>
+    <string name="fw_clipboard_copy_mac">Copy Mac clipboard to phone</string>
+</resources>

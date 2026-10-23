@@ -108,4 +108,20 @@
             android:title="@string/settings_read_remote_files_for_thumbnail_title"
             android:defaultValue="@bool/pref_default_value_read_remote_files_for_thumbnail" />
     </PreferenceCategory>
+
+    <PreferenceCategory android:title="@string/fw_bridge_settings_title">
+
+        <SwitchPreferenceCompat
+            android:key="@string/pref_key_bridge_auto_connect"
+            android:title="@string/fw_bridge_auto_connect_title"
+            android:summary="@string/fw_bridge_auto_connect_summary"
+            android:defaultValue="@bool/pref_default_value_bridge_auto_connect" />
+
+        <SwitchPreferenceCompat
+            android:key="@string/pref_key_bridge_screenshot_sync"
+            android:title="@string/fw_bridge_screenshot_sync_title"
+            android:summary="@string/fw_bridge_screenshot_sync_summary"
+            android:defaultValue="@bool/pref_default_value_bridge_screenshot_sync" />
+    </PreferenceCategory>
+
 </PreferenceScreen>

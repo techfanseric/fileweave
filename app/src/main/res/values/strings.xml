@@ -799,8 +799,9 @@
     <string name="about_github_title">View on GitHub</string>
     <string name="about_licenses_title">Licenses</string>
     <string name="about_privacy_policy_title">Privacy policy</string>
+        <string name="about_upstream_title">Based on Material Files by Hai Zhang</string>
     <string name="about_author_title">Author</string>
-    <string name="about_author_name_title">Hai Zhang</string>
+    <string name="about_author_name_title">Eric Yim</string>
     <string name="about_author_github_title">Follow on GitHub</string>
     <string name="about_author_twitter_title">Follow on Twitter</string>
 

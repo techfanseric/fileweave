@@ -66,6 +66,18 @@ object Settings {
     val CREATE_ARCHIVE_TYPE: SettingLiveData<Int> =
         ResourceIdSettingLiveData(R.string.pref_key_create_archive_type, R.id.zipRadio)
 
+    val BRIDGE_AUTO_CONNECT: SettingLiveData<Boolean> =
+        BooleanSettingLiveData(
+            R.string.pref_key_bridge_auto_connect,
+            R.bool.pref_default_value_bridge_auto_connect
+        )
+
+    val SCREENSHOT_SYNC: SettingLiveData<Boolean> =
+        BooleanSettingLiveData(
+            R.string.pref_key_bridge_screenshot_sync,
+            R.bool.pref_default_value_bridge_screenshot_sync
+        )
+
     val FTP_SERVER_ANONYMOUS_LOGIN: SettingLiveData<Boolean> =
         BooleanSettingLiveData(
             R.string.pref_key_ftp_server_anonymous_login,
@@ -97,6 +109,44 @@ object Settings {
     val FTP_SERVER_WRITABLE: SettingLiveData<Boolean> =
         BooleanSettingLiveData(
             R.string.pref_key_ftp_server_writable, R.bool.pref_default_value_ftp_server_writable
+        )
+
+    // WebDAV 服务器设置。与 FTP_SERVER_* 一一对应，唯二差异：匿名默认关闭（WebDAV 场景
+    // 通常是挂载网络磁盘，凭据是预期默认）；端口默认 8080（HTTP 常用口，2121 会被部分
+    // 客户端当成 FTP 端口硬编码处理）。
+    val WEBDAV_SERVER_ANONYMOUS_LOGIN: SettingLiveData<Boolean> =
+        BooleanSettingLiveData(
+            R.string.pref_key_webdav_server_anonymous_login,
+            R.bool.pref_default_value_webdav_server_anonymous_login
+        )
+
+    val WEBDAV_SERVER_USERNAME: SettingLiveData<String> =
+        StringSettingLiveData(
+            R.string.pref_key_webdav_server_username,
+            R.string.pref_default_value_webdav_server_username
+        )
+
+    val WEBDAV_SERVER_PASSWORD: SettingLiveData<String> =
+        StringSettingLiveData(
+            R.string.pref_key_webdav_server_password, R.string.pref_default_value_empty
+        )
+
+    val WEBDAV_SERVER_PORT: SettingLiveData<Int> =
+        IntegerSettingLiveData(
+            R.string.pref_key_webdav_server_port, R.integer.pref_default_value_webdav_server_port
+        )
+
+    val WEBDAV_SERVER_HOME_DIRECTORY: SettingLiveData<Path> =
+        ParcelValueSettingLiveData(
+            R.string.pref_key_webdav_server_home_directory,
+            @Suppress("DEPRECATION")
+            Paths.get(Environment.getExternalStorageDirectory().absolutePath)
+        )
+
+    val WEBDAV_SERVER_WRITABLE: SettingLiveData<Boolean> =
+        BooleanSettingLiveData(
+            R.string.pref_key_webdav_server_writable,
+            R.bool.pref_default_value_webdav_server_writable
         )
 
     val THEME_COLOR: SettingLiveData<ThemeColor> =

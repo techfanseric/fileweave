@@ -88,6 +88,16 @@ class PairingTests(unittest.TestCase):
         self.assertEqual(self.request('files', token=token)[0], 200)
         self.assertEqual(os.stat(self.bridge.pairings.path).st_mode & 0o777, 0o600)
 
+    def test_auto_approve_marker_approves_pending_without_dialog(self):
+        request_id = self.start()
+        self.bridge.pairings.tick()
+        self.assertEqual(self.request('pair/poll', {'id': request_id, 'nonce': self.nonce})[1]['state'],
+                         'pending')
+        (Path(self.temp.name) / 'auto-approve').write_text('')
+        self.bridge.pairings.tick()
+        token = self.request('pair/poll', {'id': request_id, 'nonce': self.nonce})[1]['token']
+        self.assertEqual(self.request('files', token=token)[0], 200)
+
     def test_cancel_revokes_unclaimed_approval(self):
         request_id = self.start()
         self.bridge.pairings.decide(request_id, True)

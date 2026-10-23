@@ -24,6 +24,7 @@ import me.zhanghai.android.files.file.JavaFile
 import me.zhanghai.android.files.file.asFileSize
 import me.zhanghai.android.files.ftpserver.FtpServerActivity
 import me.zhanghai.android.files.folderbridge.FolderBridgeActivity
+import me.zhanghai.android.files.provider.root.RootAccessLiveData
 import me.zhanghai.android.files.settings.Settings
 import me.zhanghai.android.files.settings.SettingsActivity
 import me.zhanghai.android.files.settings.StandardDirectoryListActivity
@@ -36,6 +37,7 @@ import me.zhanghai.android.files.util.isMounted
 import me.zhanghai.android.files.util.putArgs
 import me.zhanghai.android.files.util.supportsExternalStorageManager
 import me.zhanghai.android.files.util.valueCompat
+import me.zhanghai.android.files.webdavserver.WebDavServerActivity
 
 val navigationItems: List<NavigationItem?>
     get() =
@@ -49,11 +51,10 @@ val navigationItems: List<NavigationItem?>
                 addAll(storageVolumeItems)
             }
             add(AddStorageItem())
-            val standardDirectoryItems = standardDirectoryItems
-            if (standardDirectoryItems.isNotEmpty()) {
-                add(null)
-                addAll(standardDirectoryItems)
-            }
+            // Standard directory categories are hidden from the drawer; the drawer
+            // leads with the paired-Mac sharing entries instead. The directories
+            // remain reachable from the file list and settings.
+            addAll(macSharingItems)
             val bookmarkDirectoryItems = bookmarkDirectoryItems
             if (bookmarkDirectoryItems.isNotEmpty()) {
                 add(null)
@@ -66,9 +67,13 @@ val navigationItems: List<NavigationItem?>
 private val storageItems: List<NavigationItem>
     @Size(min = 0)
     get() =
-        Settings.STORAGES.valueCompat.filter { it.isVisible }.map {
-            if (it.path != null) PathStorageItem(it) else IntentStorageItem(it)
-        }
+        Settings.STORAGES.valueCompat
+            // The file system root is only usable with a working root shell; showing it on
+            // non-rooted devices just leads to a dead end, so hide it there.
+            .filter { it.isVisible && (it.path == null || it !is FileSystemRoot || RootAccessLiveData.valueCompat) }
+            .map {
+                if (it.path != null) PathStorageItem(it) else IntentStorageItem(it)
+            }
 
 private abstract class PathItem(val path: Path) : NavigationItem() {
     override fun isChecked(listener: Listener): Boolean = listener.currentPath == path
@@ -354,12 +359,31 @@ private class BookmarkDirectoryItem(
     }
 }
 
+private val macSharingItems: List<NavigationItem>
+    @Size(2)
+    get() = listOf(
+        IntentMenuItem(
+            R.drawable.clipboard_icon_white_24dp, R.string.fw_navigation_mac_clipboard,
+            me.zhanghai.android.files.bridge.ClipboardActivity::class.createIntent()
+        ),
+        IntentMenuItem(
+            R.drawable.computer_icon_white_24dp, R.string.fw_navigation_mac_shared,
+            me.zhanghai.android.files.bridge.BridgeActivity::class.createIntent()
+        )
+    )
+
 private val menuItems: List<NavigationItem>
-    @Size(4)
+    @Size(5)
     get() = listOf(
         IntentMenuItem(
             R.drawable.shared_directory_icon_white_24dp, R.string.navigation_ftp_server,
             FtpServerActivity::class.createIntent()
+        ),
+        // WebDAV 与 FTP 同属「文件共享」能力，紧挨 FTP 服务器放；图标用 computer 系
+        // （挂载端通常是电脑），与顶部的 Mac 共享条目共用视觉语言。
+        IntentMenuItem(
+            R.drawable.computer_icon_white_24dp, R.string.navigation_webdav_server,
+            WebDavServerActivity::class.createIntent()
         ),
         IntentMenuItem(
             R.drawable.audio_icon_white_24dp, R.string.fw_folder_bridge_title,

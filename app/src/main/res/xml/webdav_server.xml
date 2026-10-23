@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<PreferenceScreen
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <me.zhanghai.android.files.webdavserver.WebDavServerStatePreference
+        android:key="@string/pref_key_webdav_server_state"
+        android:disableDependentsState="true"
+        android:title="@string/webdav_server_state_title" />
+
+    <me.zhanghai.android.files.webdavserver.WebDavServerUrlPreference
+        android:title="@string/webdav_server_url_title" />
+
+    <PreferenceCategory
+        android:title="@string/webdav_server_configuration_title"
+        android:dependency="@string/pref_key_webdav_server_state">
+
+        <SwitchPreferenceCompat
+            android:key="@string/pref_key_webdav_server_anonymous_login"
+            android:title="@string/webdav_server_anonymous_login_title"
+            android:summary="@string/webdav_server_anonymous_login_summary"
+            android:defaultValue="@bool/pref_default_value_webdav_server_anonymous_login"
+            android:disableDependentsState="true" />
+
+        <me.zhanghai.android.files.settings.DefaultIfEmptyEditTextPreference
+            android:key="@string/pref_key_webdav_server_username"
+            android:title="@string/webdav_server_username_title"
+            android:defaultValue="@string/pref_default_value_webdav_server_username"
+            android:dependency="@string/pref_key_webdav_server_anonymous_login"
+            app:useSimpleSummaryProvider="true" />
+
+        <me.zhanghai.android.files.settings.PasswordPreference
+            android:key="@string/pref_key_webdav_server_password"
+            android:title="@string/webdav_server_password_title"
+            android:dependency="@string/pref_key_webdav_server_anonymous_login"
+            android:inputType="textVisiblePassword"
+            app:useSimpleSummaryProvider="true" />
+
+        <me.zhanghai.android.files.settings.NonNegativeIntegerPreference
+            android:key="@string/pref_key_webdav_server_port"
+            android:title="@string/webdav_server_port_title"
+            android:defaultValue="@integer/pref_default_value_webdav_server_port"
+            app:useSimpleSummaryProvider="true" />
+
+        <me.zhanghai.android.files.webdavserver.WebDavServerHomeDirectoryPreference
+            android:key="@string/pref_key_webdav_server_home_directory"
+            android:title="@string/webdav_server_home_directory_title"
+            app:useSimpleSummaryProvider="true" />
+
+        <SwitchPreferenceCompat
+            android:key="@string/pref_key_webdav_server_writable"
+            android:title="@string/webdav_server_writable_title"
+            android:summary="@string/webdav_server_writable_summary"
+            android:defaultValue="@bool/pref_default_value_webdav_server_writable" />
+    </PreferenceCategory>
+</PreferenceScreen>

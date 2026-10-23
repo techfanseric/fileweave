@@ -1,4 +1,10 @@
-"""Short-lived, Mac-approved enrollment. Discovery never carries bearer credentials."""
+"""Short-lived, Mac-approved enrollment. Discovery never carries bearer credentials.
+
+The Mac side stays the single trust decision: by default each request waits for
+the menu-bar popup, but an operator who wants zero-touch LAN pairing can drop an
+`auto-approve` file into the state directory — every pending request is then
+approved within one tick, still subject to the pending/device/rate limits below.
+"""
 import hashlib
 import hmac
 import json
@@ -147,4 +153,10 @@ class Pairing:
                     pass
                 finally:
                     path.unlink(missing_ok=True)
+            if (self.state / 'auto-approve').exists():
+                # Zero-touch mode: approve what is still pending, under the same limits
+                # (max devices, per-address spacing) that guard popup approvals.
+                for request_id in [key for key, value in self.pending.items()
+                                   if value['state'] == 'pending']:
+                    self.decide(request_id, True)
             self._publish()

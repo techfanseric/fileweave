@@ -1,0 +1,4 @@
+<resources>
+    <string name="fw_folder_bridge_directory_auto">自动识别：%1$s</string>
+    <string name="fw_folder_bridge_error_no_directory_auto">还没有可共享的录音文件夹。授予「所有文件访问权限」后可自动识别系统录音目录，也可以在设置中手动选择文件夹。</string>
+</resources>

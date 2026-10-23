@@ -248,6 +248,13 @@
             </intent-filter>
         </activity>
 
+        <!-- 与 FTP 服务器同级的 WebDAV 服务器设置页：仅应用内入口（抽屉），不导出。 -->
+        <activity
+            android:name="me.zhanghai.android.files.webdavserver.WebDavServerActivity"
+            android:label="@string/webdav_server_title"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.MaterialFiles" />
+
         <activity
             android:name="me.zhanghai.android.files.settings.SettingsActivity"
             android:exported="true"
@@ -363,6 +370,10 @@
 
         <activity android:name="me.zhanghai.android.files.bridge.BridgeActivity" android:exported="false" />
         <activity
+            android:name="me.zhanghai.android.files.bridge.ClipboardActivity"
+            android:exported="false"
+            android:label="@string/fw_clipboard_title" />
+        <activity
             android:name="me.zhanghai.android.files.folderbridge.FolderBridgeActivity"
             android:exported="false"
             android:label="@string/fw_folder_bridge_title"
@@ -391,6 +402,17 @@
                 android:value="This is a generic file manager app offering a FTP server functionality that allows serving files from local or network storages to the local network, and users expect it to keep serving in the background for days or even weeks once they start it and until they manually end it, so that this service has to use specialUse to maintain the user expected behavior of keeping serving the files until manually ended." />
         </service>
 
+        <!-- WebDAV 服务器前台服务：类型与理由文案与 FtpServerService 保持一致（同为
+             “长期在局域网提供文件服务”的 specialUse 场景，dataSync 的六小时上限会中断
+             用户的挂载使用）。 -->
+        <service
+            android:name="me.zhanghai.android.files.webdavserver.WebDavServerService"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="This is a generic file manager app offering a WebDAV server functionality that allows serving files from local or network storages to the local network, and users expect it to keep serving in the background for days or even weeks once they start it and until they manually end it, so that this service has to use specialUse to maintain the user expected behavior of keeping serving the files until manually ended." />
+        </service>
+
         <service
             android:name="me.zhanghai.android.files.ftpserver.FtpServerTileService"
             android:exported="true"
@@ -413,6 +435,16 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="This is a file manager app offering a local-network folder share for the user's paired computer, and users expect it to keep serving in the background for days or even weeks once they start it and until they manually end it, so that this service has to use specialUse to maintain the user expected behavior of keeping serving the files until manually ended." />
         </service>
+        <service
+            android:name="me.zhanghai.android.files.bridge.BridgeConnectionService"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="This is a file manager app whose users expect the paired-computer connection, shared file list and clipboard interoperability to stay available in the background by default once enabled, until they manually turn it off in settings, so the connection service has to use specialUse to keep serving without a visible page." />
+        </service>
+        <receiver
+            android:name="me.zhanghai.android.files.bridge.BridgeConnectionReceiver"
+            android:exported="false" />
 
         <service
             android:name="me.zhanghai.android.files.folderbridge.FolderBridgeTileService"
@@ -461,5 +493,6 @@
 
         <receiver android:name="me.zhanghai.android.files.ftpserver.FtpServerReceiver" />
         <receiver android:name="me.zhanghai.android.files.folderbridge.FolderBridgeReceiver" />
+        <receiver android:name="me.zhanghai.android.files.webdavserver.WebDavServerReceiver" />
     </application>
 </manifest>

@@ -1,0 +1,4 @@
+<resources>
+    <string name="fw_folder_bridge_directory_auto">Auto-detected: %1$s</string>
+    <string name="fw_folder_bridge_error_no_directory_auto">No recordings folder to share yet. Grant “All files access” so the system recordings folder can be auto-detected, or choose a folder in settings.</string>
+</resources>

@@ -35,6 +35,19 @@ object FolderBridgeSettings {
         DIRECTORY.putValue(uri.toString())
     }
 
+    /** 共享目录的来源：用户显式选择的 SAF 目录 > 自动识别的默认录音目录 > 无。 */
+    enum class DirectorySource { USER_CHOSEN, AUTO_DETECTED, NONE }
+
+    /**
+     * 查询当前共享目录的来源。注意 AUTO_DETECTED 分支会做少量目录探测（存在性检查与
+     * 有界的递归寻找音频），不要在高速路径上反复调用。
+     */
+    fun getDirectorySource(context: Context): DirectorySource = when {
+        getTreeUri(context) != null -> DirectorySource.USER_CHOSEN
+        FolderBridgeDefaults.detect() != null -> DirectorySource.AUTO_DETECTED
+        else -> DirectorySource.NONE
+    }
+
     fun createOpenTreeIntent(): Intent =
         Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
             .addFlags(

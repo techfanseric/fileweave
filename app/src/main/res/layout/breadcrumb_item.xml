@@ -24,7 +24,7 @@
         android:duplicateParentState="true"
         android:ellipsize="end"
         android:maxLines="1"
-        android:textAppearance="@style/TextAppearance.Design.Tab"
+        android:textAppearance="?attr/textAppearanceListItemSecondary"
         app:textAllCaps="false" />
 
     <ImageView

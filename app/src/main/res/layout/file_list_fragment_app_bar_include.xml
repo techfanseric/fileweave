@@ -35,6 +35,17 @@
                 app:popupTheme="?actionBarPopupTheme"
                 app:subtitleTextAppearance="@style/TextAppearance.AppCompat.Widget.ActionBar.Subtitle.Small" />
 
+            <!-- The breadcrumb lives in the title area of the toolbar instead of a row of
+                 its own, saving vertical space; the opaque overlay toolbar (action mode)
+                 covers it automatically. -->
+            <me.zhanghai.android.files.filelist.BreadcrumbLayout
+                android:id="@+id/breadcrumbLayout"
+                android:layout_width="match_parent"
+                android:layout_height="?actionBarSize"
+                android:layout_marginStart="@dimen/file_list_toolbar_breadcrumb_margin_start"
+                android:layout_marginEnd="@dimen/file_list_toolbar_breadcrumb_margin_end"
+                android:gravity="center_vertical" />
+
             <me.zhanghai.android.files.ui.OverlayToolbar
                 android:id="@+id/overlayToolbar"
                 android:layout_width="match_parent"
@@ -46,12 +57,5 @@
                 app:navigationIcon="@drawable/close_icon_control_normal_24dp"
                 app:popupTheme="?actionBarPopupTheme" />
         </FrameLayout>
-
-        <me.zhanghai.android.files.filelist.BreadcrumbLayout
-            android:id="@+id/breadcrumbLayout"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingStart="@dimen/content_start_margin_minus_12dp"
-            android:paddingEnd="@dimen/screen_edge_margin_minus_12dp" />
     </me.zhanghai.android.files.ui.CoordinatorAppBarLayout>
 </merge>

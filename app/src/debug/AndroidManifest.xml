@@ -5,4 +5,8 @@
         android:targetPackage="org.fileweave.android" android:label="FileWeave player gesture checks" />
     <instrumentation android:name="me.zhanghai.android.files.diagnostics.BridgeDiscoveryInstrumentation"
         android:targetPackage="org.fileweave.android" android:label="FileWeave discovery checks" />
+    <instrumentation android:name="me.zhanghai.android.files.diagnostics.FolderBridgePairingInstrumentation"
+        android:targetPackage="org.fileweave.android" android:label="FileWeave folder-bridge pairing check" />
+    <instrumentation android:name="me.zhanghai.android.files.diagnostics.BridgeUiTestInstrumentation"
+        android:targetPackage="org.fileweave.android" android:label="FileWeave bridge UI check" />
 </manifest>

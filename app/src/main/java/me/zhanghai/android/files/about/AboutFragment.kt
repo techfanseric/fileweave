@@ -14,6 +14,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
 import me.zhanghai.android.files.databinding.AboutFragmentBinding
 import me.zhanghai.android.files.ui.LicensesDialogFragment
+import androidx.core.view.isVisible
 import me.zhanghai.android.files.util.createViewIntent
 import me.zhanghai.android.files.util.startActivitySafe
 
@@ -38,20 +39,23 @@ class AboutFragment : Fragment() {
         binding.gitHubLayout.setOnClickListener { startActivitySafe(GITHUB_URI.createViewIntent()) }
         binding.licensesLayout.setOnClickListener { LicensesDialogFragment.show(this) }
         binding.authorNameLayout.setOnClickListener {
-            startActivitySafe(AUTHOR_RESUME_URI.createViewIntent())
+            startActivitySafe(AUTHOR_GITHUB_URI.createViewIntent())
         }
         binding.authorGitHubLayout.setOnClickListener {
             startActivitySafe(AUTHOR_GITHUB_URI.createViewIntent())
         }
-        binding.authorTwitterLayout.setOnClickListener {
-            startActivitySafe(AUTHOR_TWITTER_URI.createViewIntent())
+        // Credit where it is due: FileWeave is a fork and keeps the upstream license.
+        binding.upstreamLayout.setOnClickListener {
+            startActivitySafe(UPSTREAM_URI.createViewIntent())
         }
+        // The upstream author's personal links stay out of FileWeave's about page.
+        binding.authorTwitterLayout.isVisible = false
     }
 
     companion object {
-        private val GITHUB_URI = Uri.parse("https://github.com/zhanghai/MaterialFiles")
-        private val AUTHOR_RESUME_URI = Uri.parse("https://resume.zhanghai.me/")
-        private val AUTHOR_GITHUB_URI = Uri.parse("https://github.com/zhanghai")
-        private val AUTHOR_TWITTER_URI = Uri.parse("https://twitter.com/zhanghai95")
+        private val GITHUB_URI = Uri.parse("https://github.com/techfanseric/fileweave")
+        private val AUTHOR_GITHUB_URI = Uri.parse("https://github.com/techfanseric")
+        // Credit where it is due: FileWeave is a fork and keeps the upstream license.
+        private val UPSTREAM_URI = Uri.parse("https://github.com/zhanghai/MaterialFiles")
     }
 }

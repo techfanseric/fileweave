@@ -16,6 +16,7 @@ import ssl
 import subprocess
 import tempfile
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit, parse_qs, urlencode
 from pairing import Pairing
@@ -23,6 +24,8 @@ from pairing import Pairing
 MAX_FILE = 8 * 1024**3
 MAX_TEXT = 256 * 1024
 MAX_CSR = 8 * 1024
+MAX_EVENT_BODY = 2048
+MAX_EVENTS = 200
 
 
 class MacClipboard:
@@ -43,10 +46,14 @@ class Bridge(ThreadingHTTPServer):
         os.chmod(self.state, 0o700)
         self.shared = self.state / 'shared'
         self.inbox = self.state / 'inbox'
+        # Real-time "folder updated" events from the phone's folder share, consumed by the
+        # menu bar app which polls this file instead of polling the phone.
+        self.folder_events = self.state / 'folder-events.jsonl'
         self.shared.mkdir(exist_ok=True)
         self.inbox.mkdir(exist_ok=True)
         self.clipboard = clipboard or MacClipboard()
         self.clipboard_lock = threading.Lock()
+        self.events_lock = threading.Lock()
         credentials = self.state / 'credentials.json'
         if credentials.exists():
             self.token = json.loads(credentials.read_text())['token']
@@ -110,6 +117,29 @@ class Bridge(ThreadingHTTPServer):
                 pem = issued.read_text()
         der = ssl.PEM_cert_to_DER_cert(pem)
         return pem, hashlib.sha256(der).hexdigest()
+
+    def record_folder_event(self, name):
+        # One JSON object per line; the menu bar app tails this file to learn about new
+        # recordings within seconds instead of waiting for its next poll of the phone.
+        # Read-modify-write under a lock with an atomic replace, so a reader never sees a
+        # half-written line and concurrent notifications cannot interleave or lose lines.
+        event = {'t': time.time(), 'type': 'folder-update', 'name': name}
+        temporary = None
+        with self.events_lock:
+            try:
+                lines = []
+                if self.folder_events.exists():
+                    lines = [line for line in self.folder_events.read_text().splitlines() if line.strip()]
+                lines.append(json.dumps(event, ensure_ascii=False))
+                lines = lines[-MAX_EVENTS:]
+                temporary = self.state / ('.folder-events-' + secrets.token_hex(8))
+                with self._restrictive_umask():
+                    temporary.write_text('\n'.join(lines) + '\n')
+                os.chmod(temporary, 0o600)
+                os.replace(temporary, self.folder_events)
+            finally:
+                if temporary is not None:
+                    temporary.unlink(missing_ok=True)
 
     @staticmethod
     @contextlib.contextmanager
@@ -327,6 +357,16 @@ class Handler(BaseHTTPRequestHandler):
                     target = self.server.inbox / (secrets.token_hex(4) + '-' + name)
                     os.link(temporary, target)
                 self.json(201, {'name': target.name, 'ok': True})
+            elif endpoint == '/v1/notify':
+                value = json.loads(b''.join(self.body(MAX_EVENT_BODY)))
+                if not isinstance(value, dict) or value.get('type') != 'folder-update':
+                    raise ValueError('Unknown event type')
+                name = value['name']
+                if not isinstance(name, str) or not name or '/' in name or '\\' in name \
+                        or '\x00' in name or name.startswith('.') or len(name.encode('utf-8')) > 240:
+                    raise ValueError('Invalid file name')
+                self.server.record_folder_event(name)
+                self.json(200, {'ok': True})
             else:
                 self.close_connection = True
                 self.json(404, {'error': 'Unknown endpoint'})

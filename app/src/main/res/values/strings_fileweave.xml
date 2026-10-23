@@ -28,7 +28,7 @@
     <string name="fw_working">Working… Keep this screen open.</string>
     <string name="fw_operation_failed">Operation failed</string>
     <string name="fw_vault_store_action">Encrypt into vault</string>
-    <string name="fw_bridge_title">Connect to Mac</string>
+    <string name="fw_bridge_title">File sharing</string>
     <string name="fw_bridge_send_action">Send to Mac</string>
     <string name="fw_bridge_trust">Pair with %1$s?</string>
     <string name="fw_bridge_ready">Connecting automatically…</string>
@@ -88,4 +88,23 @@
     <string name="fw_folder_bridge_notification_nsd_failed">· discovery unavailable</string>
     <string name="notification_channel_folder_bridge_name">Folder bridge</string>
     <string name="notification_channel_folder_bridge_description">Display and control sharing the recordings folder with the Mac</string>
+    <string name="fw_navigation_mac_clipboard">Mac clipboard</string>
+    <string name="fw_navigation_mac_shared">File sharing</string>
+    <string name="fw_bridge_settings_title">Mac integration</string>
+    <string name="fw_bridge_auto_connect_title">Stay connected to Mac</string>
+    <string name="fw_bridge_auto_connect_summary">Discover, pair and keep the connection to the paired Mac in the background, syncing its clipboard and shared file list. Turn off to stop until re-enabled.</string>
+    <string name="fw_bridge_connection_title">Mac connection</string>
+    <string name="fw_bridge_connection_connected">Connected to %1$s</string>
+    <string name="fw_bridge_connection_pairing">Pairing with Mac…</string>
+    <string name="fw_bridge_connection_retrying">Reconnecting…</string>
+    <string name="fw_bridge_connection_finding">Looking for your Mac…</string>
+    <string name="fw_bridge_connection_disable">Turn off</string>
+    <string name="fw_bridge_connection_disabled">Mac connection turned off</string>
+    <string name="notification_channel_bridge_connection_name">Mac connection</string>
+    <string name="notification_channel_bridge_connection_description">Shows and controls the always-on connection to the paired Mac</string>
+    <string name="fw_clipboard_title">Mac clipboard</string>
+    <string name="fw_clipboard_not_connected">Not connected to a Mac yet; sharing becomes available automatically once connected.</string>
+    <string name="fw_clipboard_mac_preview">Current Mac clipboard:</string>
+    <string name="fw_clipboard_refresh">Refresh Mac clipboard</string>
+    <string name="fw_clipboard_copied">Copied to this device</string>
 </resources>

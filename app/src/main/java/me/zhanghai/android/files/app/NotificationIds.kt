@@ -8,4 +8,6 @@ package me.zhanghai.android.files.app
 object NotificationIds {
     const val FTP_SERVER = 1
     const val FOLDER_BRIDGE = 2
+    const val BRIDGE_CONNECTION = 3
+    const val WEBDAV_SERVER = 4
 }

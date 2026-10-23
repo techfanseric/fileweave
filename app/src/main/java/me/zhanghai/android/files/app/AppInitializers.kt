@@ -10,11 +10,15 @@ import android.os.Build
 import android.webkit.WebView
 import jcifs.context.SingletonContext
 import me.zhanghai.android.files.BuildConfig
+import me.zhanghai.android.files.bridge.BridgeConnectionService
+import me.zhanghai.android.files.bridge.bridgeConnectionNotificationTemplate
 import me.zhanghai.android.files.coil.initializeCoil
 import me.zhanghai.android.files.filejob.fileJobNotificationTemplate
+import me.zhanghai.android.files.folderbridge.folderBridgeServiceNotificationTemplate
 import me.zhanghai.android.files.ftpserver.ftpServerServiceNotificationTemplate
 import me.zhanghai.android.files.hiddenapi.HiddenApi
 import me.zhanghai.android.files.provider.FileSystemProviders
+import me.zhanghai.android.files.provider.root.RootAccessLiveData
 import me.zhanghai.android.files.settings.Settings
 import me.zhanghai.android.files.storage.FtpServerAuthenticator
 import me.zhanghai.android.files.storage.SftpServerAuthenticator
@@ -23,6 +27,7 @@ import me.zhanghai.android.files.storage.StorageVolumeListLiveData
 import me.zhanghai.android.files.storage.WebDavServerAuthenticator
 import me.zhanghai.android.files.theme.custom.CustomThemeHelper
 import me.zhanghai.android.files.theme.night.NightModeHelper
+import me.zhanghai.android.files.webdavserver.webDavServerServiceNotificationTemplate
 import java.util.Properties
 import me.zhanghai.android.files.provider.ftp.client.Client as FtpClient
 import me.zhanghai.android.files.provider.sftp.client.Client as SftpClient
@@ -38,7 +43,9 @@ val appInitializers = listOf(
     ::initializeLiveDataObjects,
     ::initializeCustomTheme,
     ::initializeNightMode,
-    ::createNotificationChannels
+    ::createNotificationChannels,
+    ::startBridgeConnection,
+    ::checkRootAccess
 )
 
 private fun disableHiddenApiChecks() {
@@ -89,8 +96,29 @@ private fun createNotificationChannels() {
             listOf(
                 backgroundActivityStartNotificationTemplate.channelTemplate,
                 fileJobNotificationTemplate.channelTemplate,
-                ftpServerServiceNotificationTemplate.channelTemplate
+                folderBridgeServiceNotificationTemplate.channelTemplate,
+                bridgeConnectionNotificationTemplate.channelTemplate,
+                ftpServerServiceNotificationTemplate.channelTemplate,
+                // WebDAV 渠道也必须在此注册：未注册渠道上 startForeground 在 Android 8+
+                // 直接崩溃（真机已踩坑）。
+                webDavServerServiceNotificationTemplate.channelTemplate
             ).map { it.create(application) }
         )
     }
+}
+
+private fun startBridgeConnection() {
+    // Ambient connection is the default; the settings switch (and the notification
+    // action, which writes the same switch) is the only thing that keeps it off.
+    Settings.BRIDGE_AUTO_CONNECT.observeForever { enabled ->
+        if (enabled) {
+            BridgeConnectionService.start(application)
+        } else {
+            BridgeConnectionService.stop(application)
+        }
+    }
+}
+
+private fun checkRootAccess() {
+    RootAccessLiveData.check()
 }
