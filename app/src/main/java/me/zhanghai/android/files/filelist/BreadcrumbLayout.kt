@@ -137,8 +137,15 @@ class BreadcrumbLayout : HorizontalScrollView {
             isScrollToSelectedItemPending = true
             return
         }
+        // Normally the selected item is the last segment: scroll to the end of the content so
+        // that the current location stays visible when the path overflows. With forward history
+        // (after navigating back), anchor the selected segment at the start edge instead so that
+        // it is not pushed out by the segments following it. scrollTo() clamps this to a no-op
+        // when everything fits.
         val selectedItemView = itemsLayout.getChildAt(data.selectedIndex)
-        val scrollX = if (layoutDirection == View.LAYOUT_DIRECTION_LTR) {
+        val scrollX = if (data.selectedIndex == data.paths.size - 1) {
+            itemsLayout.width - width
+        } else if (layoutDirection == View.LAYOUT_DIRECTION_LTR) {
             selectedItemView.left - itemsLayout.paddingStart
         } else {
             selectedItemView.right - width + itemsLayout.paddingStart
