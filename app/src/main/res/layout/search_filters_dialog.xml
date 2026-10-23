@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="wrap_content">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:padding="24dp">
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:labelFor="@id/typeSpinner" android:text="@string/fw_search_type" />
+        <Spinner android:id="@+id/typeSpinner" android:layout_width="match_parent"
+            android:layout_height="48dp" android:entries="@array/fw_search_types" />
+        <EditText android:id="@+id/extensionEdit" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:minHeight="48dp"
+            android:inputType="textNoSuggestions" android:singleLine="true"
+            android:hint="@string/fw_search_extension" />
+        <CheckBox android:id="@+id/recursiveCheck" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:minHeight="48dp"
+            android:text="@string/fw_search_recursive" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:labelFor="@id/dateFieldSpinner" android:text="@string/fw_search_date_field" />
+        <Spinner android:id="@+id/dateFieldSpinner" android:layout_width="match_parent"
+            android:layout_height="48dp" android:entries="@array/fw_search_date_fields" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:labelFor="@id/dateRangeSpinner" android:text="@string/fw_search_dates" />
+        <Spinner android:id="@+id/dateRangeSpinner" android:layout_width="match_parent"
+            android:layout_height="48dp" android:entries="@array/fw_search_date_ranges" />
+        <LinearLayout android:id="@+id/customDates" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:orientation="vertical">
+            <Button android:id="@+id/startDateButton" style="?borderlessButtonStyle"
+                android:layout_width="match_parent" android:layout_height="wrap_content" />
+            <Button android:id="@+id/endDateButton" style="?borderlessButtonStyle"
+                android:layout_width="match_parent" android:layout_height="wrap_content" />
+        </LinearLayout>
+        <TextView android:id="@+id/creationNote" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:text="@string/fw_search_creation_note"
+            android:textAppearance="?textAppearanceListItemSecondary" />
+        <TextView android:id="@+id/errorText" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:accessibilityLiveRegion="polite"
+            android:text="@string/fw_search_invalid_range" android:visibility="gone" />
+    </LinearLayout>
+</ScrollView>

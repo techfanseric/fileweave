@@ -50,7 +50,11 @@ class FileListViewModel : ViewModel() {
         if (searchState.isSearching && searchState.query == query) {
             return
         }
-        _searchStateLiveData.value = SearchState(true, query)
+        _searchStateLiveData.value = SearchState(true, query, searchState.filters)
+    }
+
+    fun setSearchFilters(filters: SearchFilters) {
+        _searchStateLiveData.value = SearchState(true, searchViewQuery, filters)
     }
 
     fun stopSearching() {
@@ -260,7 +264,7 @@ class FileListViewModel : ViewModel() {
             val path = pathLiveData.valueCompat
             val searchState = searchStateLiveData.valueCompat
             val liveData = if (searchState.isSearching) {
-                SearchFileListLiveData(path, searchState.query)
+                SearchFileListLiveData(path, searchState.query, searchState.filters)
             } else {
                 FileListLiveData(path)
             }

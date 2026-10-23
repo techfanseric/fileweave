@@ -51,7 +51,6 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.leinardi.android.speeddial.SpeedDialView
 import java8.nio.file.Path
 import java8.nio.file.Paths
-import kotlin.math.roundToInt
 import kotlinx.parcelize.Parcelize
 import me.zhanghai.android.files.R
 import me.zhanghai.android.files.app.application
@@ -59,6 +58,8 @@ import me.zhanghai.android.files.app.clipboardManager
 import me.zhanghai.android.files.compat.checkSelfPermissionCompat
 import me.zhanghai.android.files.compat.setGroupDividerEnabledCompat
 import me.zhanghai.android.files.databinding.FileListFragmentAppBarIncludeBinding
+import me.zhanghai.android.files.databinding.FileEmptyStateBinding
+import me.zhanghai.android.files.databinding.FilePreviewPaneBinding
 import me.zhanghai.android.files.databinding.FileListFragmentBinding
 import me.zhanghai.android.files.databinding.FileListFragmentBottomBarIncludeBinding
 import me.zhanghai.android.files.databinding.FileListFragmentContentIncludeBinding
@@ -117,7 +118,6 @@ import me.zhanghai.android.files.util.createViewIntent
 import me.zhanghai.android.files.util.extraPath
 import me.zhanghai.android.files.util.extraPathList
 import me.zhanghai.android.files.util.fadeToVisibilityUnsafe
-import me.zhanghai.android.files.util.getDimensionDp
 import me.zhanghai.android.files.util.getQuantityString
 import me.zhanghai.android.files.util.hasSw600Dp
 import me.zhanghai.android.files.util.isOrientationLandscape
@@ -176,6 +176,9 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
     private lateinit var overlayActionMode: ToolbarActionMode
 
     private lateinit var bottomActionMode: ToolbarActionMode
+
+    private lateinit var dragSelection: DragSelectTouchListener
+    private lateinit var preview: FileListPreview
 
     private lateinit var layoutManager: GridLayoutManager
 
@@ -246,6 +249,19 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         binding.recyclerView.layoutManager = layoutManager
         adapter = FileListAdapter(this)
         binding.recyclerView.adapter = adapter
+        dragSelection = DragSelectTouchListener(binding.recyclerView, adapter::updateDragSelection, adapter::endDragSelection)
+        binding.recyclerView.addOnItemTouchListener(dragSelection)
+        preview = FileListPreview(FilePreviewPaneBinding.bind(
+            binding.root.findViewById(R.id.previewPane)
+        ), ::openFileDirect) { FilePropertiesDialogFragment.show(it, this) }
+        binding.root.findViewById<View>(R.id.filePanes).addOnLayoutChangeListener {
+                _, _, _, _, _, _, _, _, _ -> updatePreviewLayout()
+        }
+        // Use the measured file area, including changes while the persistent drawer animates.
+        // Screen configuration width includes the drawer and can overestimate available space.
+        binding.recyclerView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            updateSpanCount()
+        }
         val fastScroller = ThemedFastScroller.create(binding.recyclerView)
         binding.recyclerView.setOnApplyWindowInsetsListener(
             ScrollingViewOnApplyWindowInsetsListener(binding.recyclerView, fastScroller)
@@ -372,6 +388,10 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         viewModel.pickOptionsLiveData.observe(viewLifecycleOwner) { onPickOptionsChanged(it) }
         viewModel.selectedFilesLiveData.observe(viewLifecycleOwner) { onSelectedFilesChanged(it) }
         viewModel.pasteStateLiveData.observe(viewLifecycleOwner) { onPasteStateChanged(it) }
+        Settings.FILE_LIST_SHOW_DETAILS.observe(viewLifecycleOwner) {
+            adapter.showDetails = it
+            updateViewSortMenuItems()
+        }
         Settings.FILE_NAME_ELLIPSIZE.observe(viewLifecycleOwner) { onFileNameEllipsizeChanged(it) }
         viewModel.fileListLiveData.observe(viewLifecycleOwner) { onFileListChanged(it) }
         Settings.FILE_LIST_SHOW_HIDDEN_FILES.observe(viewLifecycleOwner) {
@@ -467,6 +487,23 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
             }
             R.id.action_view_list -> {
                 viewModel.viewType = FileViewType.LIST
+                true
+            }
+            R.id.action_search_filters -> {
+                SearchFiltersDialogFragment.newInstance(viewModel.searchState.filters)
+                    .show(childFragmentManager, "search_filters")
+                true
+            }
+            R.id.action_view_compact -> {
+                viewModel.viewType = FileViewType.COMPACT
+                true
+            }
+            R.id.action_view_preview -> {
+                viewModel.viewType = FileViewType.PREVIEW
+                true
+            }
+            R.id.action_show_details -> {
+                Settings.FILE_LIST_SHOW_DETAILS.putValue(!Settings.FILE_LIST_SHOW_DETAILS.valueCompat)
                 true
             }
             R.id.action_view_grid -> {
@@ -595,8 +632,14 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
     }
 
     private fun onCurrentPathChanged(path: Path) {
+        preview.clear()
         updateOverlayToolbar()
         updateBottomToolbar()
+    }
+
+    fun applySearchFilters(filters: SearchFilters) {
+        debouncedSearchRunnable.cancel()
+        viewModel.setSearchFilters(filters)
     }
 
     private fun onSearchViewExpandedChanged(expanded: Boolean) {
@@ -609,7 +652,9 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
     }
 
     private fun onFileListChanged(stateful: Stateful<List<FileItem>>) {
+        dragSelection.stop()
         val files = stateful.value
+        preview.refresh(files.orEmpty())
         val isSearching = viewModel.searchState.isSearching
         // The breadcrumb shares the toolbar row with the subtitle: loading feedback comes from
         // the progress indicator and the swipe refresh spinner, so only an error takes over
@@ -634,6 +679,10 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
                 binding.errorText.text = error
             }
         }
+        FileEmptyStateBinding.bind(binding.emptyView).apply {
+            stateTitle.setText(if (isSearching) R.string.fw_search_no_results else R.string.file_list_empty)
+            stateHint.setText(if (isSearching) R.string.fw_search_no_results_hint else R.string.fw_directory_empty_hint)
+        }
         binding.emptyView.fadeToVisibilityUnsafe(stateful is Success && !hasFiles)
         if (files != null) {
             updateAdapterFileList()
@@ -647,27 +696,68 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
     }
 
     private fun onViewTypeChanged(viewType: FileViewType) {
+        dragSelection.stop()
+        preview.clear()
+        updatePreviewLayout()
         updateSpanCount()
         adapter.viewType = viewType
         updateViewSortMenuItems()
     }
 
+    private fun updatePreviewLayout() {
+        val panes = binding.root.findViewById<View>(R.id.filePanes)
+        val density = resources.displayMetrics.density
+        val visible = FileListLayout.showPreview(
+            viewModel.viewType, panes.width / density,
+            resources.configuration.fontScale, viewModel.pickOptions != null
+        )
+        preview.setVisible(visible)
+        val params = binding.swipeRefreshLayout.layoutParams as android.widget.LinearLayout.LayoutParams
+        val listWidth = if (visible) maxOf(
+            (320 * resources.configuration.fontScale.coerceAtLeast(1f) * density).toInt(),
+            (panes.width * 0.4f).toInt()
+        ) else 0
+        val weight = if (visible) 0f else 1f
+        if (params.width != listWidth || params.weight != weight) {
+            params.width = listWidth
+            params.weight = weight
+            binding.swipeRefreshLayout.layoutParams = params
+        }
+        preview.resize(panes.height)
+    }
+
+    override fun onStop() {
+        dragSelection.stop()
+        preview.clear()
+        super.onStop()
+    }
+
     private fun updateSpanCount() {
-        layoutManager.spanCount = when (viewModel.viewType) {
-            FileViewType.LIST -> 1
-            FileViewType.GRID -> {
-                var widthDp = resources.configuration.screenWidthDp
-                val persistentDrawerLayout = binding.persistentDrawerLayout
-                if (persistentDrawerLayout != null &&
-                    persistentDrawerLayout.isDrawerOpen(GravityCompat.START)) {
-                    widthDp -= getDimensionDp(R.dimen.navigation_max_width).roundToInt()
-                }
-                (widthDp / 180).coerceAtLeast(2)
-            }
+        val recyclerView = binding.recyclerView
+        val width = recyclerView.width - recyclerView.paddingLeft - recyclerView.paddingRight
+        if (width <= 0) {
+            return
+        }
+        val configuration = resources.configuration
+        val spanCount = FileListLayout.spanCount(
+            viewModel.viewType, width / resources.displayMetrics.density, configuration.fontScale
+        )
+        if (layoutManager.spanCount == spanCount) {
+            return
+        }
+        // Keep the current file in view when folding, resizing or toggling the side navigation.
+        val position = layoutManager.findFirstVisibleItemPosition()
+        val offset = layoutManager.findViewByPosition(position)?.let {
+            layoutManager.getDecoratedTop(it) - recyclerView.paddingTop
+        } ?: 0
+        layoutManager.spanCount = spanCount
+        if (position != RecyclerView.NO_POSITION) {
+            layoutManager.scrollToPositionWithOffset(position, offset)
         }
     }
 
     private fun onSortOptionsChanged(sortOptions: FileSortOptions) {
+        dragSelection.stop()
         adapter.sortOptions = sortOptions
         updateViewSortMenuItems()
     }
@@ -681,6 +771,7 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
             return
         }
         val searchViewExpanded = viewModel.isSearchViewExpanded
+        menuBinding.menu.findItem(R.id.action_search_filters).isVisible = searchViewExpanded
         menuBinding.viewSortItem.isVisible = !searchViewExpanded
         if (searchViewExpanded) {
             return
@@ -689,8 +780,14 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         val checkedViewTypeItem = when (viewType) {
             FileViewType.LIST -> menuBinding.viewListItem
             FileViewType.GRID -> menuBinding.viewGridItem
+            FileViewType.COMPACT -> menuBinding.menu.findItem(R.id.action_view_compact)
+            FileViewType.PREVIEW -> menuBinding.menu.findItem(R.id.action_view_preview)
         }
         checkedViewTypeItem.isChecked = true
+        menuBinding.menu.findItem(R.id.action_show_details).apply {
+            isChecked = Settings.FILE_LIST_SHOW_DETAILS.valueCompat
+            isEnabled = viewType != FileViewType.GRID
+        }
         val sortOptions = viewModel.sortOptions
         val checkedSortByItem = when (sortOptions.by) {
             By.NAME -> menuBinding.sortByNameItem
@@ -1188,6 +1285,10 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         viewModel.clearSelectedFiles()
     }
 
+    override fun startDragSelection(position: Int) {
+        dragSelection.start(position)
+    }
+
     override fun selectFile(file: FileItem, selected: Boolean) {
         viewModel.selectFile(file, selected)
     }
@@ -1197,6 +1298,14 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
     }
 
     override fun openFile(file: FileItem) {
+        if (preview.isVisible && viewModel.pickOptions == null) {
+            preview.show(file)
+        } else {
+            openFileDirect(file)
+        }
+    }
+
+    private fun openFileDirect(file: FileItem) {
         val pickOptions = viewModel.pickOptions
         if (pickOptions != null) {
             if (file.attributes.isDirectory) {
@@ -1703,7 +1812,7 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
                     includeBinding.persistentBarLayout, appBarBinding.appBarLayout,
                     appBarBinding.toolbar, appBarBinding.overlayToolbar,
                     appBarBinding.breadcrumbLayout, contentBinding.contentLayout,
-                    contentBinding.progress, contentBinding.errorText, contentBinding.emptyView,
+                    contentBinding.progress, contentBinding.errorText, contentBinding.emptyView.root,
                     contentBinding.swipeRefreshLayout, contentBinding.recyclerView,
                     bottomBarBinding.bottomBarLayout, bottomBarBinding.bottomToolbar,
                     bottomBarBinding.bottomCreateFileNameEdit, speedDialBinding.speedDialView

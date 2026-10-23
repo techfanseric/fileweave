@@ -45,7 +45,46 @@ import java.util.Locale
 class FileListAdapter(
     private val listener: Listener
 ) : AnimatedListAdapter<FileItem, FileListAdapter.ViewHolder>(CALLBACK), PopupTextProvider {
+    private var dragRange: DragSelectionRange? = null
+    private var dragEnd = RecyclerView.NO_POSITION
+
+    fun beginDragSelection(position: Int): Boolean {
+        if (pickOptions?.allowMultiple == false || position !in list.indices || !isFileSelectable(getItem(position))) return false
+        dragEnd = RecyclerView.NO_POSITION
+        dragRange = DragSelectionRange(list.indices.filter { getItem(it) in selectedFiles }.toSet(), position)
+        updateDragSelection(position, position)
+        return true
+    }
+
+    fun updateDragSelection(anchor: Int, end: Int) {
+        val range = dragRange ?: return
+        if (range.anchor != anchor || end !in list.indices || end == dragEnd) return
+        dragEnd = end
+        val desired = range.selectionAt(end)
+        val add = FileItemSet()
+        val remove = FileItemSet()
+        for (index in list.indices) {
+            val file = getItem(index)
+            if (!isFileSelectable(file)) continue
+            if (index in desired && file !in selectedFiles) add.add(file)
+            if (index !in desired && file in selectedFiles) remove.add(file)
+        }
+        if (remove.isNotEmpty()) listener.selectFiles(remove, false)
+        if (add.isNotEmpty()) listener.selectFiles(add, true)
+    }
+
+    fun endDragSelection() {
+        dragRange = null
+        dragEnd = RecyclerView.NO_POSITION
+    }
+
     private var isSearching = false
+
+    var showDetails = true
+        set(value) {
+            field = value
+            notifyItemRangeChanged(0, itemCount)
+        }
 
     private lateinit var _viewType: FileViewType
     var viewType: FileViewType
@@ -175,7 +214,17 @@ class FileListAdapter(
         val viewType = FileViewType.entries[viewType]
         val inflater = parent.context.layoutInflater
         val holder = when (viewType) {
-            FileViewType.LIST -> ViewHolder(FileItemListBinding.inflate(inflater, parent, false))
+            FileViewType.LIST, FileViewType.PREVIEW, FileViewType.COMPACT -> {
+                val binding = FileItemListBinding.inflate(inflater, parent, false)
+                if (viewType == FileViewType.COMPACT) {
+                    binding.itemLayout.layoutParams.height = ViewGroup.LayoutParams.WRAP_CONTENT
+                    binding.itemLayout.minimumHeight = (56 * parent.resources.displayMetrics.density).toInt()
+                    val padding = (4 * parent.resources.displayMetrics.density).toInt()
+                    binding.itemLayout.setPadding(0, padding, 0, padding)
+                    binding.nameText.textSize = 14f
+                }
+                ViewHolder(binding)
+            }
             FileViewType.GRID -> ViewHolder(FileItemGridBinding.inflate(inflater, parent, false))
         }
         return holder.apply {
@@ -244,14 +293,16 @@ class FileListAdapter(
                 }
             }
             setOnLongClickListener {
-                if (selectedFiles.isEmpty()) {
-                    selectFile(file)
+                val currentPosition = holder.bindingAdapterPosition
+                if (currentPosition != RecyclerView.NO_POSITION && beginDragSelection(currentPosition)) {
+                    listener.startDragSelection(currentPosition)
                 } else {
-                    listener.openFile(file)
+                    selectFile(file)
                 }
                 true
             }
         }
+
         holder.iconLayout.setOnClickListener { selectFile(file) }
         val iconRes = file.mimeType.iconRes
         holder.iconImage.apply {
@@ -317,16 +368,7 @@ class FileListAdapter(
             }
         }
         holder.nameText.text = file.name
-        holder.descriptionText?.text = if (isDirectory) {
-            null
-        } else {
-            val context = holder.descriptionText!!.context
-            val lastModificationTime = attributes.lastModifiedTime().toInstant()
-                .formatShort(context)
-            val size = attributes.fileSize.formatHumanReadable(context)
-            val descriptionSeparator = context.getString(R.string.file_item_description_separator)
-            listOf(lastModificationTime, size).joinToString(descriptionSeparator)
-        }
+        holder.descriptionText?.text = if (showDetails) file.listDescription(holder.itemLayout.context) else null
         val isArchivePath = path.isArchivePath
         menu.findItem(R.id.action_fw_encrypt).isVisible = !isDirectory && !isArchivePath
         menu.findItem(R.id.action_fw_send_mac).isVisible = !isDirectory && !isArchivePath
@@ -471,6 +513,7 @@ class FileListAdapter(
     }
 
     interface Listener {
+        fun startDragSelection(position: Int)
         fun clearSelectedFiles()
         fun selectFile(file: FileItem, selected: Boolean)
         fun selectFiles(files: FileItemSet, selected: Boolean)

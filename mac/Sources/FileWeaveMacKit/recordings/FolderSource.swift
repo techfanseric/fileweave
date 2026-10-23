@@ -198,8 +198,9 @@ public enum FolderDiscovery {
         let thread = Thread {
             browser.schedule(in: .current, forMode: .default)
             browser.searchForServices(ofType: serviceType, inDomain: "local.")
-            // run(mode:before:) 到点自动返回；期间 resolve 的回调都送进来
-            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(timeout))
+            // run(mode:before:) 处理一次输入源就可能返回；发现服务和解析地址是
+            // 不同回调，必须持续运行到截止时间，不能在 didFind 后提前停掉。
+            runDiscoveryLoop(until: Date().addingTimeInterval(timeout))
             browser.stop()
             done.signal()
         }
@@ -213,6 +214,12 @@ public enum FolderDiscovery {
         let unique = collector.candidates.filter { seen.insert($0.fp).inserted }
         collector.lock.unlock()
         return unique
+    }
+
+    static func runDiscoveryLoop(until deadline: Date) {
+        while Date() < deadline {
+            RunLoop.current.run(mode: .default, before: deadline)
+        }
     }
 }
 
@@ -374,7 +381,7 @@ public final class FileWeaveFolderSource: RecordingSource, @unchecked Sendable {
         // 契约：200 全量 / 206 Range。这里从不发 Range，所以 206 只在服务端异常时出现，
         // 且必须证明它恰好是「整份文件」才接受，否则宁可失败也不写半份。
         guard let http = resp as? HTTPURLResponse else {
-            throw SourceError.server("拉取音频失败")
+            throw SourceError.server("拉取音频失败：手机未返回 HTTP 响应")
         }
         if http.statusCode == 206 {
             let header = http.value(forHTTPHeaderField: "Content-Range") ?? ""
@@ -384,7 +391,7 @@ public final class FileWeaveFolderSource: RecordingSource, @unchecked Sendable {
                 throw SourceError.server("Range 响应不完整（收到 \(data.count) 字节）")
             }
         } else if http.statusCode != 200 {
-            throw SourceError.server("拉取音频失败")
+            throw SourceError.server("拉取音频失败：手机返回 HTTP \(http.statusCode)，请刷新后重试")
         }
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)

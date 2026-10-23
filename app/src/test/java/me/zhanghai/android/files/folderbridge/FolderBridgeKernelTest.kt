@@ -265,6 +265,21 @@ class FolderBridgeKernelTest {
     }
 
     @Test
+    fun fileDecodesUtf8PathAndPreservesQueryCharacters() {
+        val path = "通话录音/测试😀 +%&=.m4a"
+        val content = ByteArray(512) { it.toByte() }
+        backend.files[path] = "doc-unicode" to content
+        val encoded = java.net.URLEncoder.encode(path, "UTF-8").replace("+", "%20")
+        val whole = request("GET", "/v1/file?path=$encoded")
+        assertEquals(200, whole.status)
+        assertArrayEquals(content, whole.body)
+        val range = request("GET", "/v1/file?path=$encoded",
+            extraHeaders = listOf("Range: bytes=128-255"))
+        assertEquals(206, range.status)
+        assertArrayEquals(content.copyOfRange(128, 256), range.body)
+    }
+
+    @Test
     fun fileRejectsMissingAndUnsafePaths() {
         seedFiles()
         assertEquals(400, request("GET", "/v1/file").status)

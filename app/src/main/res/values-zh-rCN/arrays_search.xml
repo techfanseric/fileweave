@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="fw_search_types"><item>全部类型</item><item>仅图片</item><item>仅视频</item><item>仅音频</item><item>仅 Markdown</item><item>指定扩展名</item></string-array>
+    <string-array name="fw_search_date_fields"><item>修改日期</item><item>创建日期</item></string-array>
+    <string-array name="fw_search_date_ranges"><item>不限日期</item><item>今天</item><item>昨天</item><item>近 7 天</item><item>自选区间</item></string-array>
+</resources>

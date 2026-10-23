@@ -99,6 +99,26 @@ final class FolderSourceTests: XCTestCase {
 
     // MARK: Bonjour TXT
 
+    func testDiscoveryLoopWaitsForResolveAfterDiscoveryInput() {
+        let finished = expectation(description: "resolve callback processed")
+        Thread.detachNewThread {
+            // A discovery input wakes the run loop before the later resolve callback.
+            let port = Port()
+            RunLoop.current.add(port, forMode: .default)
+            let first = Timer(timeInterval: 0.01, repeats: false) { _ in
+                CFRunLoopStop(CFRunLoopGetCurrent())
+            }
+            let resolve = Timer(timeInterval: 0.05, repeats: false) { _ in finished.fulfill() }
+            RunLoop.current.add(first, forMode: .default)
+            RunLoop.current.add(resolve, forMode: .default)
+            FolderDiscovery.runDiscoveryLoop(until: Date().addingTimeInterval(0.15))
+            first.invalidate()
+            resolve.invalidate()
+            port.invalidate()
+        }
+        wait(for: [finished], timeout: 1)
+    }
+
     func testParseTXTReadsVAndFp() throws {
         let txt = NetService.data(fromTXTRecord: ["v": Data("1".utf8),
                                                   "fp": Data("ABCDEF0123".utf8)])

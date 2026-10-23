@@ -35,33 +35,32 @@
             android:visibility="gone"
             app:drawableTopCompat="@drawable/error_icon_240dp" />
 
-        <TextView
-            android:id="@+id/emptyView"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:paddingTop="12dp"
-            android:paddingBottom="32dp"
-            android:drawablePadding="8dp"
-            android:gravity="center_horizontal"
-            android:text="@string/file_list_empty"
-            android:textAppearance="?textAppearanceListItem"
-            android:visibility="gone"
-            app:drawableTopCompat="@drawable/file_icon_240dp" />
+        <include android:id="@+id/emptyView" layout="@layout/file_empty_state"
+            android:visibility="gone" />
 
-        <androidx.swiperefreshlayout.widget.ThemedSwipeRefreshLayout
-            android:id="@+id/swipeRefreshLayout"
+        <LinearLayout
+            android:id="@+id/filePanes"
             android:layout_width="match_parent"
-            android:layout_height="match_parent">
+            android:layout_height="match_parent"
+            android:orientation="horizontal">
 
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/recyclerView"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:paddingBottom="@dimen/list_bottom_padding_with_fab"
-                android:clipToPadding="false"
-                android:fitsSystemWindows="true"
-                tools:listitem="@layout/file_item_list" />
-        </androidx.swiperefreshlayout.widget.ThemedSwipeRefreshLayout>
+            <androidx.swiperefreshlayout.widget.ThemedSwipeRefreshLayout
+                android:id="@+id/swipeRefreshLayout"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="match_parent">
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/recyclerView"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:paddingBottom="@dimen/list_bottom_padding_with_fab"
+                    android:clipToPadding="false"
+                    android:fitsSystemWindows="true"
+                    tools:listitem="@layout/file_item_list" />
+            </androidx.swiperefreshlayout.widget.ThemedSwipeRefreshLayout>
+
+            <include layout="@layout/file_preview_pane" />
+        </LinearLayout>
     </me.zhanghai.android.files.ui.CoordinatorScrollingFrameLayout>
 </merge>

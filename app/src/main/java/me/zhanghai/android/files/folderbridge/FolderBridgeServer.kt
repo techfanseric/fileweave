@@ -576,23 +576,24 @@ private fun percentDecode(value: String): String {
     if (!value.contains('%')) {
         return value
     }
-    val builder = StringBuilder(value.length)
+    // Percent escapes represent UTF-8 bytes, not individual Unicode characters.
+    // Decode only after collecting bytes so Chinese and supplementary characters survive.
+    val bytes = java.io.ByteArrayOutputStream(value.length)
     var index = 0
     while (index < value.length) {
-        val c = value[index]
-        if (c == '%' && index + 2 < value.length) {
-            val hex = value.substring(index + 1, index + 3)
-            val code = hex.toIntOrNull(16)
+        if (value[index] == '%' && index + 2 < value.length) {
+            val code = value.substring(index + 1, index + 3).toIntOrNull(16)
             if (code != null) {
-                builder.append(code.toChar())
+                bytes.write(code)
                 index += 3
                 continue
             }
         }
-        builder.append(c)
-        ++index
+        val next = value.indexOf('%', index + 1).let { if (it < 0) value.length else it }
+        bytes.write(value.substring(index, next).toByteArray(Charsets.UTF_8))
+        index = next
     }
-    return builder.toString()
+    return bytes.toByteArray().toString(Charsets.UTF_8)
 }
 
 private fun errorJson(message: String): String = "{\"ok\":false,\"error\":" + jsonQuote(message)

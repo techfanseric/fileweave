@@ -25,11 +25,16 @@ object VaultSession {
         })
     }
 
-    @Synchronized fun unlock(root: File, password: ByteArray, create: Boolean) {
-        lock()
-        if (create && root.exists() && root.list()?.isNotEmpty() == true) throw IOException("Vault already exists")
-        root.mkdirs()
+    @Synchronized fun unlock(root: File, password: ByteArray, create: Boolean, expectedGeneration: Long? = null) {
+        // A delayed password/biometric result cannot reopen a session invalidated by locking.
+        if (expectedGeneration != null && expectedGeneration != generation) {
+            password.fill(0)
+            throw IOException("Unlock session expired")
+        }
         try {
+            lock()
+            if (create && root.exists() && root.list()?.isNotEmpty() == true) throw IOException("Vault already exists")
+            root.mkdirs()
             val id = GocryptfsNative.unlock(root.absolutePath, password, create)
             if (id < 0) throw IOException(if (create) "Unable to create vault" else "Wrong password or unreadable vault")
             session = id

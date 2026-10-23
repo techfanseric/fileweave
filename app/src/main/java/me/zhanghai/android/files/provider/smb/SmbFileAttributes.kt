@@ -26,7 +26,9 @@ internal class SmbFileAttributes(
     override val size: Long,
     override val fileKey: Parcelable,
     private val attributes: Long
-) : AbstractBasicFileAttributes() {
+) : AbstractBasicFileAttributes(), me.zhanghai.android.files.provider.common.KnownCreationTime {
+    override val hasCreationTime: Boolean get() = creationTime.toMillis() > 0
+
     fun attributes(): Long = attributes
 
     companion object {

@@ -9,4 +9,8 @@
         android:targetPackage="org.fileweave.android" android:label="FileWeave folder-bridge pairing check" />
     <instrumentation android:name="me.zhanghai.android.files.diagnostics.BridgeUiTestInstrumentation"
         android:targetPackage="org.fileweave.android" android:label="FileWeave bridge UI check" />
+    <instrumentation android:name="me.zhanghai.android.files.diagnostics.FileListGestureInstrumentation"
+        android:targetPackage="org.fileweave.android" android:label="FileWeave file-list gesture checks" />
+    <instrumentation android:name="me.zhanghai.android.files.diagnostics.SearchFiltersInstrumentation"
+        android:targetPackage="org.fileweave.android" android:label="FileWeave search filter checks" />
 </manifest>

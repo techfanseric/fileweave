@@ -19,6 +19,10 @@
         app:actionViewClass="me.zhanghai.android.files.ui.FixQueryChangeSearchView"
         app:showAsAction="always|collapseActionView" />
 
+    <item android:id="@+id/action_search_filters"
+        android:icon="@drawable/filter_icon_control_normal_24dp"
+        android:title="@string/fw_search_filters" app:showAsAction="always" />
+
     <item
         android:id="@+id/action_view_sort"
         android:icon="@drawable/sort_icon_control_normal_24dp"
@@ -31,10 +35,15 @@
                 android:checkableBehavior="single">
                 <item
                     android:id="@+id/action_view_list"
-                    android:title="@string/file_list_action_view_list" />
+                    android:title="@string/fw_view_medium" />
                 <item
                     android:id="@+id/action_view_grid"
                     android:title="@string/file_list_action_view_grid" />
+                <item android:id="@+id/action_view_compact" android:title="@string/fw_view_compact" />
+                <item android:id="@+id/action_view_preview" android:title="@string/fw_view_preview" />
+            </group>
+            <group android:id="@+id/group_details">
+                <item android:id="@+id/action_show_details" android:checkable="true" android:title="@string/fw_show_details" />
             </group>
             <group
                 android:id="@+id/group_sort"

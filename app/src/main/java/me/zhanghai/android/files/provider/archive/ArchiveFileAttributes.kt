@@ -33,8 +33,10 @@ internal class ArchiveFileAttributes(
     override val mode: Set<PosixFileModeBit>?,
     override val seLinuxContext: ByteString?,
     private val isEncrypted: Boolean,
-    private val entryName: String
-) : AbstractPosixFileAttributes(), EncryptedFileAttributes {
+    private val entryName: String,
+    override val hasCreationTime: Boolean = false
+) : AbstractPosixFileAttributes(), EncryptedFileAttributes,
+    me.zhanghai.android.files.provider.common.KnownCreationTime {
     override fun isEncrypted(): Boolean = isEncrypted
 
     fun entryName(): String = entryName
@@ -55,7 +57,7 @@ internal class ArchiveFileAttributes(
             val entryName = entry.name
             return ArchiveFileAttributes(
                 lastModifiedTime, lastAccessTime, creationTime, type, size, fileKey, owner, group,
-                mode, seLinuxContext, isEncrypted, entryName
+                mode, seLinuxContext, isEncrypted, entryName, entry.creationTime != null
             )
         }
     }

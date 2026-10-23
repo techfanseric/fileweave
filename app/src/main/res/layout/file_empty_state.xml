@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Shared empty-state treatment: centered icon, short title, secondary guidance. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:layout_gravity="center" android:orientation="vertical"
+    android:gravity="center" android:padding="32dp" android:minHeight="160dp">
+    <ImageView android:id="@+id/stateIcon" android:layout_width="40dp" android:layout_height="40dp"
+        android:importantForAccessibility="no" android:src="@drawable/file_icon_white_24dp"
+        app:tint="?android:textColorSecondary" />
+    <TextView android:id="@+id/stateTitle" android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_marginTop="16dp" android:gravity="center" android:textAlignment="center"
+        android:textAppearance="?textAppearanceListItem" android:text="@string/file_list_empty" />
+    <TextView android:id="@+id/stateHint" android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:maxWidth="280dp" android:layout_marginTop="8dp" android:gravity="center"
+        android:textAppearance="?textAppearanceListItemSecondary" android:textColor="?android:textColorSecondary"
+        android:text="@string/fw_search_no_results_hint" />
+</LinearLayout>

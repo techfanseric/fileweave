@@ -28,8 +28,9 @@ internal data class WebDavFileAttributes(
     override val creationTime: @WriteWith<FileTimeParceler> FileTime,
     override val type: BasicFileType,
     override val size: Long,
-    override val fileKey: Parcelable
-) : AbstractBasicFileAttributes() {
+    override val fileKey: Parcelable,
+    override val hasCreationTime: Boolean = false
+) : AbstractBasicFileAttributes(), me.zhanghai.android.files.provider.common.KnownCreationTime {
     companion object {
         fun from(response: Response, path: WebDavPath): WebDavFileAttributes =
             when {
@@ -46,7 +47,8 @@ internal data class WebDavFileAttributes(
                     val size = response.size
                     val fileKey = path
                     WebDavFileAttributes(
-                        lastModifiedTime, lastAccessTime, creationTime, type, size, fileKey
+                        lastModifiedTime, lastAccessTime, creationTime, type, size, fileKey,
+                        response.creationTime != null
                     )
                 }
                 response.isSymbolicLink -> {

@@ -101,4 +101,6 @@
     <bool name="pref_default_value_bridge_auto_connect">true</bool>
     <string name="pref_key_bridge_screenshot_sync">key_bridge_screenshot_sync</string>
     <bool name="pref_default_value_bridge_screenshot_sync">true</bool>
+    <string name="pref_key_file_list_show_details">key_file_list_show_details</string>
+    <bool name="pref_default_value_file_list_show_details">true</bool>
 </resources>
