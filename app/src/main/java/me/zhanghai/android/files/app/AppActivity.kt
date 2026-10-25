@@ -13,6 +13,31 @@ import me.zhanghai.android.files.theme.night.NightModeHelper
 
 abstract class AppActivity : AppCompatActivity() {
     private var isDelegateCreated = false
+    private var clipboardListener: android.content.ClipboardManager.OnPrimaryClipChangedListener? = null
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        val clipboard = getSystemService(android.content.ClipboardManager::class.java)
+        clipboardListener?.let { clipboard.removePrimaryClipChangedListener(it) }
+        clipboardListener = null
+        if (hasFocus) {
+            clipboardListener = android.content.ClipboardManager.OnPrimaryClipChangedListener {
+                if (!window.decorView.hasWindowFocus()) return@OnPrimaryClipChangedListener
+                val clip = clipboard.primaryClip ?: return@OnPrimaryClipChangedListener
+                if (clip.description.label == me.zhanghai.android.files.bridge.AutomaticClipboard.REMOTE_LABEL ||
+                    (android.os.Build.VERSION.SDK_INT >= 24 && clip.description.extras?.getBoolean("android.content.extra.IS_SENSITIVE") == true)) return@OnPrimaryClipChangedListener
+                if (clip.itemCount == 1) clip.getItemAt(0).text?.toString()?.let {
+                    me.zhanghai.android.files.bridge.AutomaticClipboard.copied(it)
+                }
+            }.also { clipboard.addPrimaryClipChangedListener(it) }
+        }
+    }
+
+    override fun onDestroy() {
+        clipboardListener?.let { getSystemService(android.content.ClipboardManager::class.java).removePrimaryClipChangedListener(it) }
+        clipboardListener = null
+        super.onDestroy()
+    }
 
     override fun getDelegate(): AppCompatDelegate {
         val delegate = super.getDelegate()

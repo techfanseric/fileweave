@@ -9,8 +9,6 @@ import me.zhanghai.android.files.file.FileItem
 import me.zhanghai.android.files.file.iconRes
 import me.zhanghai.android.files.file.fileSize
 import me.zhanghai.android.files.file.formatLong
-import me.zhanghai.android.files.provider.common.PosixFileAttributes
-import me.zhanghai.android.files.provider.common.toModeString
 
 /** Uses the same bounded thumbnail pipeline as the list; no player or document reader is started. */
 internal class FileListPreview(
@@ -36,7 +34,8 @@ internal class FileListPreview(
     }
 
     fun resize(height: Int) {
-        if (height > 0) binding.previewImage.maxHeight = (height * 0.68f).toInt()
+        if (height > 0) binding.previewImage.maxHeight = minOf((height * 0.4f).toInt(),
+            (240 * binding.root.resources.displayMetrics.density).toInt())
     }
 
     fun show(file: FileItem) {
@@ -60,26 +59,35 @@ internal class FileListPreview(
         binding.previewHint.setText(R.string.fw_preview_unavailable)
         binding.previewName.text = file.name
         val context = binding.root.context
-        fun property(label: Int, value: String) = "${context.getString(label)}  $value"
-        binding.previewDetails.text = buildList {
-            add(property(R.string.file_properties_basic_type,
-                "${file.getMimeTypeName(context)} (${file.mimeType.value})"))
-            if (!file.attributes.isDirectory) {
-                add(property(R.string.file_properties_basic_size,
-                    "${file.attributes.fileSize.formatHumanReadable(context)} (${file.attributes.size()} B)"))
+        binding.previewDetails.removeAllViews()
+        fun property(label: Int, value: String) {
+            val density = context.resources.displayMetrics.density
+            val row = android.widget.LinearLayout(context).apply {
+                orientation = android.widget.LinearLayout.VERTICAL
+                setPadding(0, 0, 0, (16 * density).toInt())
             }
-            add(property(R.string.file_properties_basic_last_modification_time,
-                file.attributes.lastModifiedTime().toInstant().formatLong()))
-            file.symbolicLinkTarget?.let {
-                add(property(R.string.file_properties_basic_symbolic_link_target, it.toString()))
-            }
-            (file.attributes as? PosixFileAttributes)?.let { attributes ->
-                attributes.owner()?.let { add(property(R.string.file_properties_permission_owner, it.toString())) }
-                attributes.group()?.let { add(property(R.string.file_properties_permission_group, it.toString())) }
-                attributes.mode()?.let { add(property(R.string.file_properties_permission_mode, it.toModeString())) }
-            }
-        }.joinToString("\n")
-        binding.previewPath.text = file.path.toString()
+            row.addView(android.widget.TextView(context).apply {
+                setTextAppearance(context, android.R.style.TextAppearance_Material_Caption)
+                setText(label)
+            })
+            row.addView(android.widget.TextView(context).apply {
+                setTextAppearance(context, android.R.style.TextAppearance_Material_Body1)
+                text = value
+                setTextIsSelectable(true)
+                setPadding(0, (4 * density).toInt(), 0, 0)
+                setLineSpacing(3 * density, 1f)
+            })
+            binding.previewDetails.addView(row)
+        }
+        property(R.string.file_properties_basic_type, file.getMimeTypeName(context))
+        if (!file.attributes.isDirectory) {
+            property(R.string.file_properties_basic_size,
+                file.attributes.fileSize.formatHumanReadable(context))
+        }
+        property(R.string.file_properties_basic_last_modification_time,
+            file.attributes.lastModifiedTime().toInstant().formatLong())
+        property(R.string.fw_preview_location, file.path.toString())
+        // Ownership, permissions and exact byte counts belong in the full Properties sheet.
         binding.previewOpen.isVisible = true
         binding.previewProperties.isVisible = true
         binding.previewScroll.scrollTo(0, 0)
@@ -101,8 +109,7 @@ internal class FileListPreview(
         binding.previewHint.setText(R.string.fw_preview_hint)
         binding.previewHint.isVisible = true
         binding.previewName.text = null
-        binding.previewDetails.text = null
-        binding.previewPath.text = null
+        binding.previewDetails.removeAllViews()
         binding.previewOpen.isVisible = false
         binding.previewProperties.isVisible = false
     }

@@ -8,6 +8,14 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
+    <Preference
+        android:key="recordings_browse"
+        android:title="@string/fw_recordings_browse" />
+    <Preference
+        android:key="recordings_transcripts"
+        android:title="@string/fw_transcripts"
+        android:summary="@string/fw_transcripts_empty" />
+
     <me.zhanghai.android.files.folderbridge.FolderBridgeStatePreference
         android:key="folder_bridge_state"
         android:disableDependentsState="true"

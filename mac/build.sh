@@ -8,17 +8,34 @@ BUNDLE_ID="org.fileweave.mac.dev"
 OUT="$ROOT/build"
 APP="$OUT/$APP_NAME.app"
 
+# Optional SDK override for machines whose newest SDK needs unavailable Xcode plugins.
+SWIFT_ARGS=()
+if [ -n "${FILEWEAVE_MACOS_SDK:-}" ]; then
+  SWIFT_ARGS+=(--sdk "$FILEWEAVE_MACOS_SDK" --build-system native)
+fi
+
 echo "==> swift build -c release"
 cd "$ROOT"
-swift build -c release 2>&1 | tail -30
+swift build -c release "${SWIFT_ARGS[@]}" 2>&1 | tail -30
 
-BIN="$(swift build -c release --show-bin-path)/FileWeaveMenuBar"
+BIN="$(swift build -c release "${SWIFT_ARGS[@]}" --show-bin-path)/FileWeaveMenuBar"
 [ -x "$BIN" ] || { echo "找不到可执行文件: $BIN"; exit 1; }
 
 echo "==> 组装 .app bundle"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/FileWeaveMac"
+
+# Reuse the Android launcher artwork for the menu bar and app bundle.
+cp "$ROOT/../art/launcher_icon-web.png" "$APP/Contents/Resources/FileWeaveIcon.png"
+ICONSET="$OUT/FileWeave.iconset"
+mkdir -p "$ICONSET"
+for size in 16 32 128 256 512; do
+    sips -z "$size" "$size" "$ROOT/../art/launcher_icon-web.png" --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
+    double=$((size * 2))
+    sips -z "$double" "$double" "$ROOT/../art/launcher_icon-web.png" --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
+done
+iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/FileWeave.icns"
 
 # 转录脚本等资源
 cp "$ROOT/Resources/transcribe.py" "$APP/Contents/Resources/transcribe.py"
@@ -35,6 +52,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleName</key><string>$APP_NAME</string>
     <key>CFBundleDisplayName</key><string>$APP_NAME</string>
     <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
+    <key>CFBundleIconFile</key><string>FileWeave.icns</string>
     <key>CFBundleExecutable</key><string>FileWeaveMac</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>1.0</string>

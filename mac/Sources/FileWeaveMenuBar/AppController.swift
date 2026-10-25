@@ -17,6 +17,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
     private var compactMenu: NSMenu!
+    private var clipboardTimer: Timer?
+    private var clipboardTask: Task<Void, Never>?
+    private var clipboardChange = NSPasteboard.general.changeCount
     private var loginMenuItem: NSMenuItem?
     private var cancellables = Set<AnyCancellable>()
 
@@ -36,6 +39,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         app.start()
         bridge.start()
+        clipboardTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.forwardClipboardChange() }
+        }
+        clipboardTimer?.tolerance = 0.05
 
         // 测试钩子：FILEWEAVE_LOGIN_ITEM=on|off|status|service|agent|unload
         // 菜单栏里的勾选项没法用合成点击驱动，这条路径要能单独验。
@@ -139,7 +146,19 @@ final class AppController: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
     }
 
+    private func forwardClipboardChange() {
+        let board = NSPasteboard.general
+        guard board.changeCount != clipboardChange else { return }
+        clipboardChange = board.changeCount
+        let concealed = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
+        guard board.availableType(from: [concealed, .fileURL]) == nil,
+              let text = board.string(forType: .string), !text.isEmpty else { return }
+        clipboardTask?.cancel()
+        clipboardTask = Task { await app.sendClipboardToPhone(text) }
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
+        clipboardTimer?.invalidate(); clipboardTask?.cancel()
         bridge.shutdown()
     }
 
@@ -155,6 +174,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// bridge 的状态行变了（已就绪 / 恢复中 / 等待局域网访问）：
     /// 右键菜单如果此刻挂着就直接改那一项，状态栏 tooltip 同步换。
     private func observeBridge() {
+        bridge.$highlightID.dropFirst().sink { [weak self] id in
+            guard !id.isEmpty else { return }
+            DispatchQueue.main.async { self?.openPanel() }
+        }.store(in: &cancellables)
         bridge.objectWillChange
             .sink { [weak self] _ in
                 DispatchQueue.main.async { self?.refreshStatusTitle() }
@@ -173,10 +196,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         guard let button = statusItem.button else { return }
-        // 沿用 FileWeave 原来的图标：双向箭头 + " FW"
-        button.image = NSImage(systemSymbolName: "arrow.left.arrow.right",
-                               accessibilityDescription: "FileWeave")
-        button.title = " FW"
+        button.image = MenuBarIcon.image()
+        button.title = ""
         button.target = self
         button.action = #selector(statusItemClicked)
         // 接管左右键，自己决定弹什么
@@ -195,7 +216,16 @@ final class AppController: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let host = NSHostingController(
             rootView: FileWeavePanelView(bridge: bridge).environmentObject(app)
         )
+        host.sizingOptions = []
+        host.view.frame = NSRect(x: 0, y: 0, width: Metrics.panelWidth, height: Metrics.panelHeight)
         popover.contentViewController = host
+        popover.contentSize = host.view.frame.size
+        NotificationCenter.default.publisher(for: NSWindow.didResizeNotification)
+            .sink { [weak self] notification in
+                guard let self, let window = notification.object as? NSWindow,
+                      window === self.popover.contentViewController?.view.window else { return }
+                DispatchQueue.main.async { self.placePanelInsideScreen() }
+            }.store(in: &cancellables)
     }
 
     /// 让面板成为 key 窗口，否则里面的菜单要点两次才开：
@@ -211,15 +241,25 @@ final class AppController: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     ///    推一个 runloop 勉强够，但「打开后立刻点菜单」这一下还是会闪一下就关。
     ///    连着试几次才稳：0 / 30 / 90 毫秒各来一次。
     private func makePanelReadyForMenus() {
-        for delay in [0.0, 0.03, 0.09] {
+        for delay in [0.0, 0.03, 0.09, 0.3, 0.6] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
                 guard let window = self?.popover.contentViewController?.view.window else { return }
                 if let panel = window as? NSPanel {
                     panel.becomesKeyOnlyIfNeeded = false
                 }
+                self?.placePanelInsideScreen()
                 window.makeKey()
             }
         }
+    }
+
+    private func placePanelInsideScreen() {
+        guard popover.isShown, let button = statusItem.button, let anchorWindow = button.window,
+              let window = popover.contentViewController?.view.window,
+              let screen = anchorWindow.screen ?? NSScreen.main else { return }
+        let anchor = anchorWindow.convertToScreen(button.convert(button.bounds, to: nil))
+        let frame = MenuPanelGeometry.frame(window.frame, available: screen.visibleFrame, anchor: anchor)
+        if window.frame != frame { window.setFrame(frame, display: true) }
     }
 
     private func openPanel() {
@@ -238,6 +278,21 @@ final class AppController: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         app.notifyPanelOpened()
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         makePanelReadyForMenus()
+        if let path = ProcessInfo.processInfo.environment["FILEWEAVE_PANEL_SNAPSHOT"] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
+                guard let self, let view = self.popover.contentViewController?.view,
+                      let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+                view.cacheDisplay(in: view.bounds, to: bitmap)
+                if let data = bitmap.representation(using: .png, properties: [:]) {
+                    try? data.write(to: URL(fileURLWithPath: path))
+                }
+                self.placePanelInsideScreen()
+                if let anchorWindow = button.window, let window = view.window {
+                    let anchor = anchorWindow.convertToScreen(button.convert(button.bounds, to: nil))
+                    NSLog("PANEL anchor=%@ screen=%@ frame=%@ transient=%@", NSStringFromRect(anchor), NSStringFromRect(anchorWindow.screen?.visibleFrame ?? .zero), NSStringFromRect(window.frame), (self.popover.behavior == .transient).description)
+                }
+            }
+        }
 
         // 搜索框抢焦点是另一回事，由 MenuView 顶部的焦点占位符管，别和这里混。
         // 这里刻意不做任何焦点补救（makeFirstResponder / initialFirstResponder）。

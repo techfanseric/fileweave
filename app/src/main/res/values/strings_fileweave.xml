@@ -29,7 +29,7 @@
     <string name="fw_operation_failed">Operation failed</string>
     <string name="fw_vault_store_action">Encrypt into vault</string>
     <string name="fw_bridge_title">File sharing</string>
-    <string name="fw_bridge_send_action">Send to Mac</string>
+    <string name="fw_bridge_send_action">Share to Mac</string>
     <string name="fw_bridge_trust">Pair with %1$s?</string>
     <string name="fw_bridge_ready">Connecting automatically…</string>
     <string name="fw_bridge_send_clipboard">Send phone clipboard to Mac</string>
@@ -65,7 +65,7 @@
     <string name="fw_bridge_finish">Verified on my Mac — finish</string>
     <string name="fw_bridge_choose_mac">Choose the Mac you want to use.</string>
     <string name="fw_bridge_reapprove">Connection approval expired. Waiting for your Mac to approve again.</string>
-    <string name="fw_folder_bridge_title">Share recordings with Mac</string>
+    <string name="fw_folder_bridge_title">Recordings &amp; transcripts</string>
     <string name="fw_folder_bridge_state_title">Service</string>
     <string name="fw_folder_bridge_state_summary_starting">Starting…</string>
     <string name="fw_folder_bridge_state_summary_running">Running</string>

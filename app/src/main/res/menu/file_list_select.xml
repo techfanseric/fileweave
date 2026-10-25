@@ -58,4 +58,6 @@
         android:orderInCategory="100"
         android:title="@string/select_all"
         app:showAsAction="never" />
+    <item android:id="@+id/action_lan_share" android:title="@string/fw_lan_share" />
+    <item android:id="@+id/action_fw_send_mac" android:title="@string/fw_bridge_send_action" />
 </menu>

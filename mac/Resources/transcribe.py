@@ -47,8 +47,8 @@ def read_wav(path):
     """读 16-bit 单声道 wav，返回 float32 采样与采样率"""
     import wave
     with wave.open(path, "rb") as f:
-        if f.getnchannels() != 1 or f.getsampwidth() != 2:
-            raise RuntimeError("只支持 16-bit 单声道 wav")
+        if f.getnchannels() != 1 or f.getsampwidth() != 2 or f.getframerate() != SR:
+            raise RuntimeError("只支持 16kHz 16-bit 单声道 wav")
         raw = f.readframes(f.getnframes())
         rate = f.getframerate()
     samples = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
@@ -103,8 +103,12 @@ def main():
         n = (len(sig) - frame) // hop
         if n <= 0:
             return [(0.0, len(sig) / sr)] if len(sig) else []
-        idx = np.arange(frame)[None, :] + hop * np.arange(n)[:, None]
-        rms = np.sqrt((sig[idx] ** 2).mean(axis=1))
+        # Bounded working memory even for hour-long recordings.
+        windows = np.lib.stride_tricks.sliding_window_view(sig, frame)[::hop][:n]
+        rms = np.empty(n, dtype=np.float32)
+        for offset in range(0, n, 4096):
+            chunk = windows[offset:offset + 4096]
+            rms[offset:offset + len(chunk)] = np.sqrt((chunk ** 2).mean(axis=1))
 
         # 自适应门限：以噪声底的 3 倍为界，并设绝对下限
         noise = float(np.percentile(rms, 20))
@@ -209,6 +213,10 @@ def main():
     t_spk = time.time()
     try:
         spk_dir = os.path.join(models_dir, "speaker")
+        required = ["pyannote-segmentation-3-0.onnx",
+                    "3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx"]
+        if not all(os.path.isfile(os.path.join(spk_dir, name)) for name in required):
+            raise RuntimeError("未安装说话人模型，保留正常文字转录")
         seg_cfg = sherpa_onnx.OfflineSpeakerSegmentationModelConfig(
             pyannote=sherpa_onnx.OfflineSpeakerSegmentationPyannoteModelConfig(
                 model=os.path.join(spk_dir, "pyannote-segmentation-3-0.onnx")

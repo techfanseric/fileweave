@@ -1,16 +1,21 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <instrumentation android:name="me.zhanghai.android.files.diagnostics.SmokeInstrumentation"
-        android:targetPackage="org.fileweave.android" android:label="FileWeave development checks" />
+        android:targetPackage="${applicationId}" android:label="FileWeave development checks" />
     <instrumentation android:name="me.zhanghai.android.files.diagnostics.PlayerGestureInstrumentation"
-        android:targetPackage="org.fileweave.android" android:label="FileWeave player gesture checks" />
+        android:targetPackage="${applicationId}" android:label="FileWeave player gesture checks" />
     <instrumentation android:name="me.zhanghai.android.files.diagnostics.BridgeDiscoveryInstrumentation"
-        android:targetPackage="org.fileweave.android" android:label="FileWeave discovery checks" />
+        android:targetPackage="${applicationId}" android:label="FileWeave discovery checks" />
     <instrumentation android:name="me.zhanghai.android.files.diagnostics.FolderBridgePairingInstrumentation"
-        android:targetPackage="org.fileweave.android" android:label="FileWeave folder-bridge pairing check" />
+        android:targetPackage="${applicationId}" android:label="FileWeave folder-bridge pairing check" />
     <instrumentation android:name="me.zhanghai.android.files.diagnostics.BridgeUiTestInstrumentation"
-        android:targetPackage="org.fileweave.android" android:label="FileWeave bridge UI check" />
+        android:targetPackage="${applicationId}" android:label="FileWeave bridge UI check" />
     <instrumentation android:name="me.zhanghai.android.files.diagnostics.FileListGestureInstrumentation"
-        android:targetPackage="org.fileweave.android" android:label="FileWeave file-list gesture checks" />
+        android:targetPackage="${applicationId}" android:label="FileWeave file-list gesture checks" />
     <instrumentation android:name="me.zhanghai.android.files.diagnostics.SearchFiltersInstrumentation"
-        android:targetPackage="org.fileweave.android" android:label="FileWeave search filter checks" />
+        android:targetPackage="${applicationId}" android:label="FileWeave search filter checks" />
+    <instrumentation android:name="me.zhanghai.android.files.diagnostics.QuickShareInstrumentation"
+        android:targetPackage="${applicationId}" android:label="FileWeave quick sharing checks" />
+    <application>
+        <receiver android:name="me.zhanghai.android.files.diagnostics.ShareCheckReceiver" android:exported="true" android:permission="android.permission.DUMP" />
+    </application>
 </manifest>

@@ -54,13 +54,12 @@ class FolderBridgeStatePreference : SwitchPreferenceCompat {
         } else {
             context.getString(summaryRes)
         }
-        isChecked = status.state == FolderBridgeService.State.STARTING
-            || status.state == FolderBridgeService.State.RUNNING
-        isEnabled = !(status.state == FolderBridgeService.State.STARTING
-            || status.state == FolderBridgeService.State.STOPPING)
+        isChecked = PairedShares.recordings
+        isEnabled = true
     }
 
     override fun onClick() {
-        FolderBridgeService.toggle(context)
+        PairedShares.recordings = !PairedShares.recordings
+        isChecked = PairedShares.recordings
     }
 }

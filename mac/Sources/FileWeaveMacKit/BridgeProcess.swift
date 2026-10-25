@@ -32,6 +32,8 @@ enum MacPaths {
 public final class BridgeProcess: NSObject, ObservableObject, NetServiceDelegate {
 
     /// 状态行文案。右键菜单和面板顶部共用这一份。
+    @Published public private(set) var highlightID = ""
+    public private(set) var highlightDevice: String?
     @Published public private(set) var statusLine = "FileWeave · 正在自动连接手机"
     /// 状态行的悬浮说明（发布成功/失败时各有一句指引）
     @Published public private(set) var statusToolTip: String?
@@ -111,6 +113,13 @@ public final class BridgeProcess: NSObject, ObservableObject, NetServiceDelegate
             statusLine = "FileWeave · 连接恢复中"
             startServer()
             return
+        }
+        if let data = try? Data(contentsOf: MacPaths.state.appendingPathComponent("highlight.json")),
+           let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let id = event["id"] as? String, let time = event["time"] as? Double,
+           id != highlightID, Date().timeIntervalSince1970 - time < 120 {
+            highlightDevice = event["device"] as? String
+            highlightID = id
         }
         if Date().timeIntervalSince(startedAt) >= 30 { restartDelay = 1 }
         if let data = try? Data(contentsOf: MacPaths.state.appendingPathComponent("pairing.json")),

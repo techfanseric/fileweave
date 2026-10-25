@@ -1,0 +1,15 @@
+<resources>
+    <string name="fw_share_to_mac">发送到 Mac</string>
+    <string name="fw_share_sending">正在发送到 Mac…</string>
+    <string name="fw_send_clipboard_quick">剪贴板发到 Mac</string>
+    <string name="fw_server_configure">连接设置</string>
+    <string name="fw_transcripts">录音转录</string>
+    <string name="fw_transcripts_empty">Mac 完成转录后会自动保存到这里，离线也能查看。</string>
+    <string name="fw_screen_captures">截图与录屏</string>
+    <string name="fw_recordings_browse">查看录音</string>
+    <string name="fw_global_files">向 Mac 共享手机文件</string>
+    <string name="fw_global_files_hint">已配对的 Mac 可浏览手机存储的目录和文件，并直接拷贝。关闭后，仅保留你主动选择共享的内容。</string>
+    <string name="fw_clear_shared_selection">取消本次选择的共享</string>
+    <string name="fw_selection_shared">已在 Mac 突出显示本次共享的内容。</string>
+    <string name="fw_clipboard_notification_hint">点此直接发送，完成后自动收起，回到 Mac 粘贴。</string>
+</resources>

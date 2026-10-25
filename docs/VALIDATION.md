@@ -1,6 +1,25 @@
 # 验证记录
 
-日期：2026-10-22 起，10-23 更新。此记录说明实际完成的验证，不等同于独立安全审计或全设备兼容性认证。
+日期：2026-10-22 起，10-24 更新。此记录说明实际完成的验证，不等同于独立安全审计或全设备兼容性认证。
+
+## Mac 紧凑原生界面（2026-10-25）
+
+- 合并品牌区与页面切换区，设备状态和访达入口统一放到底栏。文件范围与搜索共用一行；子目录才展示路径栏。文件名、大小同行显示，复制操作放入右键菜单。文件与录音采用 SwiftUI 系统 List，录音列表、搜索建议及转录正文占满剩余内容区，不再手算列表高度。
+- 面板宽度保持 440 点，高度上限由 540 缩至 500 点；菜单栏宿主与调试窗口共用尺寸。调试截图改为捕获挂载后的 NSView，覆盖原生 List；可用 `SNAPSHOT_PAGE=recordings` 检查录音页。
+- 使用 macOS 26.5 SDK 的 Swift 调试构建、release 构建、`mac/build.sh` 打包及 ad-hoc 签名验证通过；`git diff --check` 通过。原有 actor 隔离及未使用变量等编译警告仍存在。
+- 实际调试窗口检查文件与录音断连状态；另在临时源码副本中注入生成数据，检查长文件名、27 项文件列表、24 条录音及多选操作栏、20 段转录滚动区、深色搜索无结果状态。示例数据未写入产品源码或用户资料；这些检查不代表真实手机传输与转录端到端回归通过。
+- `swift test --package-path mac --sdk /Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk --build-system native` 被当前 CLT 环境阻断，原始错误：`FolderSourceTests.swift:1:8: error: no such module 'XCTest'`。未声称 Swift 单元测试通过。
+
+## 共享、剪贴板与菜单栏体验（2026-10-24）
+
+- Android `assembleDebug`、`testDebugUnitTest`、`lintDebug` 通过；137 项 JVM 测试无失败，覆盖共享路径边界、Range、撤销、鉴权及剪贴板请求等。Mac Python 23 项测试通过。
+- Mac 使用 Command Line Tools 的 macOS 26.5 SDK 构建、打包及本地签名通过。默认 27 SDK 存在 SwiftUIMacros 编译问题；当前 CLT 环境缺少 XCTest，未声称 Swift XCTest 通过。独立 Swift 面板几何检查 27 个场景通过，实际 NSPopover 快照完整显示顶部和底部，窗口位于屏幕可见区域内；仍是点击外部关闭的 transient 面板。
+- 本机 Swift → ffmpeg → Python ASR 流程生成 3 个句子。通过固定证书指纹的真实局域网 TLS 请求读取手机存储，生成文件的 `Range: bytes=3-5` 返回 206 和预期字节；转录上传后核对手机持久化 JSON，生成文件及转录夹具均清理。
+- 真机非 instrumentation 检查通过：后台读取设置、真实文件及本地 HTTP Range、符号链接边界、共享撤销。Honor 系统曾以 `iaware pevent send broadcast` 拦截无 action 的开发检查广播，显式 action 后正常执行。此调试入口仅在 debug 构建中，受 DUMP 权限保护，不是产品运行前提。
+- 修复真实崩溃：后台首次初始化 `FolderBridgeSettings` 时创建 LiveData，触发主线程约束；后台路径改为直接读取偏好，界面 LiveData 延迟初始化。最新安装后的进程退出记录没有新增应用崩溃；此前 instrumentation 启停及 APK 更新造成的退出不能算作应用闪退，也不再在用户操作期间运行会结束应用的 instrumentation。
+- 因原安装签名不同，真机更新使用独立 `org.fileweave.android.qa` 测试包，没有卸载或清空原应用。已运行本机正式菜单栏 bundle，而非独立调试窗口。
+- 剪贴板目前支持文本。Mac 复制自动发送至已连接手机；FileWeave 前台能合法读取的复制自动发送至 Mac。其他 Android 应用复制后，通过常驻通知、快捷磁贴或系统文字菜单发送；不承诺跨应用后台自动读取，也不依赖 Root、ADB 或悬浮窗授权。完整多厂商剪贴板交互与长时间后台耗电尚未验证。
+- 全局文件共享指已授权的手机主存储，不包括其他应用私有目录；Mac 浏览及下载为只读。局域网链接停止、锁屏或新共享替换后失效。长时间休眠、超大文件及所有厂商后台限制仍需进一步验证。
 
 ## 搜索筛选、生物识别与空状态接手验证（2026-10-23）
 

@@ -93,20 +93,14 @@ class ClipboardActivity : FeatureActivity() {
         work { bridge ->
             val text = bridge.json("clipboard").getString("text")
             withContext(Dispatchers.Main) {
-                MaterialAlertDialogBuilder(this@ClipboardActivity)
-                    .setTitle(R.string.fw_bridge_mac_clipboard)
-                    .setMessage(text.take(4000))
-                    .setPositiveButton(R.string.fw_bridge_copy) { _, _ -> copyToPhone(text) }
-                    .setNegativeButton(android.R.string.cancel, null)
-                    .show()
+                copyToPhone(text)
             }
             ""
         }
     }
 
     private fun copyToPhone(text: String) {
-        getSystemService(ClipboardManager::class.java)
-            .setPrimaryClip(ClipData.newPlainText("FileWeave", text))
+        AutomaticClipboard.receive(this, text)
         // 复制发生在主线程，历史写盘放后台执行；预览截断由 Entry.clipboard 统一处理。
         lifecycleScope.launch(Dispatchers.IO) {
             BridgeHistoryStore.add(this@ClipboardActivity, BridgeHistoryStore.Entry.clipboard(outgoing = false, text = text))

@@ -2,111 +2,92 @@ import SwiftUI
 import AppKit
 
 /// 面板尺寸与排版常量，集中一处便于统一调整
-enum Metrics {
-    static let panelWidth: CGFloat = 440
-    static let rowPaddingH: CGFloat = 14
-    static let rowPaddingV: CGFloat = 7
+public enum Metrics {
+    public static let panelWidth: CGFloat = 440
+    static let rowPaddingH: CGFloat = 12
+    static let rowPaddingV: CGFloat = 4
     /// 单行行高
     static let rowOneLine: CGFloat = 30
     /// 双行行高（带预览/摘要时）
     static let rowTwoLines: CGFloat = 50
     static let iconSize: CGFloat = 15
-    static let maxListHeight: CGFloat = 540
-    /// 搜索框底部距其外框的距离：上内边距 6 + 字段(4+16+4) + 一点间隙
-    /// 浮层靠它定位，改字号/内边距时这里要跟着调
-    static let searchFieldBottom: CGFloat = 26
-
-    static var listHeightLimit: CGFloat {
-        let screenH = NSScreen.screens.first?.visibleFrame.height ?? 900
-        return max(260, min(maxListHeight, screenH * 0.62))
-    }
-
-    static func listHeight(totalRows: Int, twoLineRows: Int, sectionCount: Int) -> CGFloat {
-        guard totalRows > 0 else { return 0 }
-        let content = CGFloat(twoLineRows) * rowTwoLines
-            + CGFloat(totalRows - twoLineRows) * rowOneLine
-            + CGFloat(sectionCount) * 26
-        return min(content, listHeightLimit)
+    public static var panelHeight: CGFloat {
+        min(500, (NSScreen.main?.visibleFrame.height ?? 800) - 40)
     }
 }
 
 // MARK: - 合并面板（FileWeave 状态段 + 录音页）
 
-/// 合并后的菜单栏面板：顶部是 FileWeave 服务状态（bridge.py 监管那条线，
-/// 含共享文件夹 / 收件箱入口），下面分段页承载移植来的完整录音面板。
+/// 菜单栏面板：顶部切换文件与录音，底部统一放设备状态与访达入口。
 ///
 /// `bridge` 由外层（AppController / DebugApp）传入：菜单栏版传真正监管
-/// 子进程的那个实例；调试窗口传一个没 start() 的实例，只为了渲染出
-/// 顶部状态段 —— 不然调试截图就少了最上面那一块。
+/// 子进程的那个实例；调试窗口不启动子进程，避免与正式实例争用端口。
 public struct FileWeavePanelView: View {
     @EnvironmentObject private var app: AppState
     @ObservedObject private var bridge: BridgeProcess
 
-    public init(bridge: BridgeProcess) {
+    public init(bridge: BridgeProcess, showsRecordings: Bool = false) {
         self.bridge = bridge
+        _page = State(initialValue: showsRecordings ? 1 : 0)
     }
 
+    @State private var page: Int
     public var body: some View {
         VStack(spacing: 0) {
-            statusSection
+            HStack(spacing: 10) {
+                Image(systemName: "folder.badge.gearshape")
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("FileWeave")
+                Picker("页面", selection: $page) {
+                    Text("手机文件").tag(0)
+                    Text("录音与转录").tag(1)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .controlSize(.small)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
             Divider()
-            Picker("页面", selection: .constant(0)) {
-                Text("录音").tag(0)
+            Group {
+                if page == 0 { SharedFilesView(bridge: bridge) } else { RecorderMenuView() }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .padding(.horizontal, Metrics.rowPaddingH)
-            .padding(.top, 7)
-            .padding(.bottom, 2)
-            RecorderMenuView()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            Divider()
+            HStack(spacing: 12) {
+                Circle()
+                    .fill(app.link.isReady ? Color.green : Color.secondary)
+                    .frame(width: 5, height: 5)
+                    .accessibilityHidden(true)
+                Text(app.link.title)
+                    .lineLimit(1)
+                    .help(connectionHelp)
+                Spacer(minLength: 4)
+                Button { bridge.openShared() } label: {
+                    Image(systemName: "folder.badge.person.crop")
+                }
+                .accessibilityLabel("共享给手机的文件")
+                .help("在访达中打开共享给手机的文件")
+                Button { bridge.openInbox() } label: {
+                    Image(systemName: "tray.and.arrow.down")
+                }
+                .accessibilityLabel("Mac 收件箱")
+                .help("在访达中打开 Mac 收件箱")
+            }
+            .buttonStyle(.borderless)
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
         }
-        .frame(width: Metrics.panelWidth)
+        .frame(width: Metrics.panelWidth, height: Metrics.panelHeight)
         .background(.regularMaterial)
+        .onChange(of: bridge.highlightID) { _, _ in page = 0 }
     }
 
-    /// 顶栏状态段：状态点 + 状态行 + 两个文件夹入口。
-    /// 状态行文案全部来自 BridgeProcess（和右键菜单那一行是同一份）。
-    private var statusSection: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(bridgeReady ? Color.green : Color.orange)
-                .frame(width: 6, height: 6)
-
-            Text(bridge.statusLine)
-                .font(.system(size: 12, weight: .medium))
-                .lineLimit(1)
-                .help(bridge.statusToolTip ?? "")
-
-            Spacer(minLength: 6)
-
-            Button {
-                bridge.openShared()
-            } label: {
-                Label("打开共享文件夹", systemImage: "folder")
-                    .labelStyle(.titleAndIcon)
-                    .font(.system(size: 11))
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(Color.accentColor)
-            .help("手机可读取的共享文件夹")
-
-            Button {
-                bridge.openInbox()
-            } label: {
-                Label("收件箱", systemImage: "tray.and.arrow.down")
-                    .labelStyle(.titleAndIcon)
-                    .font(.system(size: 11))
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(Color.accentColor)
-            .help("手机传来的文件落在这里")
-        }
-        .padding(.horizontal, Metrics.rowPaddingH)
-        .padding(.vertical, 8)
-    }
-
-    private var bridgeReady: Bool {
-        bridge.statusLine.contains("已就绪")
+    private var connectionHelp: String {
+        if case .ready(let info) = app.link { return info.detail }
+        return app.linkHint ?? app.link.title
     }
 }
 
@@ -158,10 +139,10 @@ public struct RecorderMenuView: View {
                 listView
             }
         }
-        .frame(width: Metrics.panelWidth)
-        .background(.regularMaterial)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onChange(of: app.selection) { _, _ in disarm() }
         .onDisappear { searchFocused = false }
+        .onChange(of: app.isPanelVisible) { _, visible in if visible { searchFocused = false } }
         .onExitCommand { searchFocused = false }
     }
 
@@ -197,47 +178,15 @@ public struct RecorderMenuView: View {
 
     // MARK: 顶栏
 
-    private var statusColor: Color {
-        switch app.link {
-        case .ready: return Color.green
-        case .checking: return .secondary
-        default: return .orange
-        }
-    }
-
-    /// 设备状态。原本这里是个可点的「通道切换」下拉 —— 现在只有一条
-    /// 配对通道（证书固定的文件夹共享），下拉没有内容可切，退回纯展示；
-    /// 悬浮时给出诊断详情，排查时看得到连的是哪台。
-    private var statusBadge: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(statusColor)
-                .frame(width: 6, height: 6)
-
-            Text(app.link.title)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-        }
-        .help(statusHelp)
-    }
-
-    private var statusHelp: String {
-        if case .ready(let info) = app.link { return info.detail }
-        return app.linkHint ?? ""
-    }
-
     private var header: some View {
         HStack(spacing: 8) {
-            statusBadge
-
             // 搜索框放在顶栏：最高频的动作，占最好的位置
             searchBar
 
             Spacer(minLength: 4)
 
             // 右上角只留两个图标按钮：刷新 + 更多。
-            // 「上次扫描是什么时候」不在这里说了，底栏的刷新按钮自带时刻。
+            // 上次扫描时间显示在底栏，避免重复放置刷新按钮。
             if app.scanning {
                 ProgressView()
                     .controlSize(.small)
@@ -409,7 +358,7 @@ public struct RecorderMenuView: View {
                 }
             }
         }
-        .frame(height: Metrics.listHeightLimit)
+        .frame(maxHeight: .infinity)
         // 点空白 = 取消搜索：失焦并清掉输入框里的字。
         // 条目是 Button，点了它自己吃掉这次点击、不会被这里截胡。
         //
@@ -493,31 +442,27 @@ public struct RecorderMenuView: View {
                 disconnectedState
             }
         } else {
-            let total = secs.reduce(0) { $0 + $1.rows.count }
-            let twoLine = secs.reduce(0) { acc, s in
-                acc + s.rows.filter { RecordingRow.hasSecondLine($0, app: app) }.count
-            }
-
-            ScrollView {
-                LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
-                    ForEach(secs) { sec in
-                        Section {
-                            ForEach(sec.rows) { rec in
-                                RecordingRow(
-                                    rec: rec,
-                                    armedTrash: armedTrash == rec.id,
-                                    onTrashTap: { handleTrashTap(rec) }
-                                )
-                            }
-                        } header: {
-                            sectionHeader(sec.title, count: sec.rows.count)
+            List {
+                ForEach(secs) { sec in
+                    Section {
+                        ForEach(sec.rows) { rec in
+                            RecordingRow(
+                                rec: rec,
+                                armedTrash: armedTrash == rec.id,
+                                onTrashTap: { handleTrashTap(rec) }
+                            )
+                            .listRowInsets(EdgeInsets())
                         }
+                    } header: {
+                        sectionHeader(sec.title, count: sec.rows.count)
                     }
                 }
             }
-            .frame(height: Metrics.listHeight(totalRows: total,
-                                              twoLineRows: twoLine,
-                                              sectionCount: secs.count))
+            .listStyle(.inset)
+            .alternatingRowBackgrounds()
+            .scrollContentBackground(.hidden)
+            .environment(\.defaultMinListRowHeight, Metrics.rowOneLine)
+            .frame(maxHeight: .infinity)
         }
     }
 
@@ -546,7 +491,7 @@ public struct RecorderMenuView: View {
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.vertical, 28)
     }
 
@@ -579,7 +524,7 @@ public struct RecorderMenuView: View {
                     .textSelection(.enabled)
             }
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.horizontal, 22)
         .padding(.vertical, 28)
     }
@@ -597,7 +542,6 @@ public struct RecorderMenuView: View {
         .padding(.horizontal, Metrics.rowPaddingH)
         .padding(.top, 8)
         .padding(.bottom, 4)
-        .background(.regularMaterial)
     }
 
     // MARK: 底栏
@@ -619,7 +563,7 @@ public struct RecorderMenuView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            // 单行三栏：刷新固定在正中，左右内容多少都不影响它的位置
+            // 本地转录入口、扫描状态与当前选择操作。
             HStack(spacing: 8) {
                 Group {
                     if app.transcriptFolderExists {
@@ -658,25 +602,12 @@ public struct RecorderMenuView: View {
                     .help("点击标记为已读")
                 }
 
-                Button {
-                    Task { await app.userRefresh() }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 10))
-                        Text("刷新")
-                            .font(.system(size: 11))
-                        if let at = app.lastScanAt {
-                            Text(Fmt.clock.string(from: at))
-                                .font(.system(size: 10).monospacedDigit())
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
-                    .foregroundStyle(.secondary)
+                if let at = app.lastScanAt {
+                    Text(Fmt.clock.string(from: at))
+                        .font(.system(size: 10).monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                        .help("上次扫描时间")
                 }
-                .buttonStyle(.plain)
-                .help("立即重新扫描")
-                .disabled(app.scanning)
 
                 Spacer(minLength: 4)
 
@@ -812,13 +743,6 @@ struct RecordingRow: View {
     /// 是否处于「再点一次就删」的待确认状态
     var armedTrash: Bool = false
     var onTrashTap: () -> Void = {}
-
-    /// 有预览或 AI 摘要时才占第二行；在回收站里的固定占一行（要写清删除时间）
-    static func hasSecondLine(_ rec: Recording, app: AppState) -> Bool {
-        if app.isTrashed(rec) { return true }
-        guard let t = app.transcript(for: rec) else { return false }
-        return !(t.displayLine?.isEmpty ?? true)
-    }
 
     private var transcript: TranscriptRecord? { app.transcript(for: rec) }
 
@@ -1115,7 +1039,7 @@ struct TranscriptReaderView: View {
                 .padding(.horizontal, Metrics.rowPaddingH)
                 .padding(.vertical, 12)
             }
-            .frame(height: min(CGFloat(doc.segments.count) * 58 + 40, Metrics.listHeightLimit))
+            .frame(maxHeight: .infinity)
             Divider()
             footerBar
         }

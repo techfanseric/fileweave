@@ -55,7 +55,14 @@ val navigationItems: List<NavigationItem?>
             // leads with the paired-Mac sharing entries instead. The directories
             // remain reachable from the file list and settings.
             addAll(macSharingItems)
-            val bookmarkDirectoryItems = bookmarkDirectoryItems
+            add(null)
+            add(PairedShareMenuItem(true, R.drawable.audio_icon_white_24dp, R.string.fw_folder_bridge_title,
+                FolderBridgeActivity::class.createIntent()))
+            val allBookmarks = bookmarkDirectoryItems
+            val captures = allBookmarks.filterIsInstance<BookmarkDirectoryItem>()
+                .filter { it.isScreenCaptureDirectory }
+            addAll(captures)
+            val bookmarkDirectoryItems = allBookmarks.filterNot { it in captures }
             if (bookmarkDirectoryItems.isNotEmpty()) {
                 add(null)
                 addAll(bookmarkDirectoryItems)
@@ -348,7 +355,14 @@ private class BookmarkDirectoryItem(
     @DrawableRes
     override val iconRes: Int = R.drawable.directory_icon_white_24dp
 
-    override fun getTitle(context: Context): String = bookmarkDirectory.name
+    val isScreenCaptureDirectory: Boolean
+        get() = bookmarkDirectory.path.fileName?.toString() == "Screenshots"
+
+    override fun getTitle(context: Context): String =
+        if (isScreenCaptureDirectory && bookmarkDirectory.name in setOf(
+                context.getString(R.string.settings_bookmark_directory_screenshots), "Screenshots", "屏幕截图"))
+            context.getString(R.string.fw_screen_captures)
+        else bookmarkDirectory.name
 
     override fun onLongClick(listener: Listener): Boolean {
         listener.launchIntent(
@@ -366,28 +380,24 @@ private val macSharingItems: List<NavigationItem>
             R.drawable.clipboard_icon_white_24dp, R.string.fw_navigation_mac_clipboard,
             me.zhanghai.android.files.bridge.ClipboardActivity::class.createIntent()
         ),
-        IntentMenuItem(
+        PairedShareMenuItem(false,
             R.drawable.computer_icon_white_24dp, R.string.fw_navigation_mac_shared,
             me.zhanghai.android.files.bridge.BridgeActivity::class.createIntent()
         )
     )
 
 private val menuItems: List<NavigationItem>
-    @Size(5)
+    @Size(4)
     get() = listOf(
-        IntentMenuItem(
+        ServerMenuItem(false,
             R.drawable.shared_directory_icon_white_24dp, R.string.navigation_ftp_server,
             FtpServerActivity::class.createIntent()
         ),
         // WebDAV 与 FTP 同属「文件共享」能力，紧挨 FTP 服务器放；图标用 computer 系
         // （挂载端通常是电脑），与顶部的 Mac 共享条目共用视觉语言。
-        IntentMenuItem(
+        ServerMenuItem(true,
             R.drawable.computer_icon_white_24dp, R.string.navigation_webdav_server,
             WebDavServerActivity::class.createIntent()
-        ),
-        IntentMenuItem(
-            R.drawable.audio_icon_white_24dp, R.string.fw_folder_bridge_title,
-            FolderBridgeActivity::class.createIntent()
         ),
         IntentMenuItem(
             R.drawable.settings_icon_white_24dp, R.string.navigation_settings,
@@ -418,4 +428,44 @@ private class IntentMenuItem(
         listener.launchIntent(intent)
         listener.closeNavigationDrawer()
     }
+}
+
+private class ServerMenuItem(
+    private val webDav: Boolean,
+    @DrawableRes iconRes: Int,
+    @StringRes titleRes: Int,
+    private val intent: Intent
+) : MenuItem(iconRes, titleRes) {
+    private val state: String
+        get() = if (webDav) me.zhanghai.android.files.webdavserver.WebDavServerService.stateLiveData.value.toString()
+            else me.zhanghai.android.files.ftpserver.FtpServerService.stateLiveData.value.toString()
+    override val id: Long get() = intent.component.hashCode().toLong()
+    override val switchChecked: Boolean get() = state == "RUNNING" || state == "STARTING"
+    override val switchEnabled: Boolean get() = state == "RUNNING" || state == "STOPPED"
+    override fun toggle(context: Context) {
+        if (webDav) me.zhanghai.android.files.webdavserver.WebDavServerService.toggle(context)
+        else me.zhanghai.android.files.ftpserver.FtpServerService.toggle(context)
+    }
+    override fun onClick(listener: Listener) {}
+    override fun configure(listener: Listener) { listener.launchIntent(intent) }
+    override fun onLongClick(listener: Listener): Boolean { configure(listener); return true }
+}
+
+private class PairedShareMenuItem(
+    private val recordings: Boolean,
+    @DrawableRes iconRes: Int,
+    @StringRes titleRes: Int,
+    private val intent: Intent
+) : MenuItem(iconRes, titleRes) {
+    override val toggleOnRowClick = false
+    override val id: Long get() = intent.component.hashCode().toLong()
+    override val switchChecked: Boolean get() = if (recordings)
+        me.zhanghai.android.files.folderbridge.PairedShares.recordings else me.zhanghai.android.files.folderbridge.PairedShares.files
+    override fun toggle(context: Context) {
+        if (recordings) me.zhanghai.android.files.folderbridge.PairedShares.recordings = !switchChecked
+        else me.zhanghai.android.files.folderbridge.PairedShares.files = !switchChecked
+    }
+    override fun onClick(listener: Listener) { configure(listener); listener.closeNavigationDrawer() }
+    override fun configure(listener: Listener) { listener.launchIntent(intent) }
+    override fun onLongClick(listener: Listener): Boolean { configure(listener); return true }
 }

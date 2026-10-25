@@ -19,8 +19,11 @@ import java.util.concurrent.TimeUnit
  */
 class WebDavServer(
     private val port: Int,
-    private val kernel: WebDavKernel
+    private val handleConnection: (java.io.InputStream, java.io.OutputStream) -> Unit
 ) {
+    constructor(port: Int, kernel: WebDavKernel) : this(port, kernel::handleConnection)
+
+    private val sockets = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<Socket, Boolean>())
     private var serverSocket: ServerSocket? = null
     private var acceptThread: Thread? = null
     private val pool: ThreadPoolExecutor = ThreadPoolExecutor(
@@ -64,8 +67,10 @@ class WebDavServer(
                 }
                 consecutiveFailures = 0
                 try {
+                    sockets.add(socket)
                     pool.execute { handle(socket) }
                 } catch (_: RejectedExecutionException) {
+                    sockets.remove(socket)
                     try {
                         socket.close()
                     } catch (_: Exception) { }
@@ -85,10 +90,12 @@ class WebDavServer(
             socket.soTimeout = IDLE_TIMEOUT_MILLIS
             val input = socket.getInputStream()
             val output = socket.getOutputStream()
-            kernel.handleConnection(input, output)
+            handleConnection(input, output)
+            output.flush()
         } catch (_: Exception) {
             // 畸形或截断的请求只能断开连接；协议核在能回答时已经回答过了。
         } finally {
+            sockets.remove(socket)
             try {
                 socket.close()
             } catch (_: Exception) { }
@@ -102,6 +109,8 @@ class WebDavServer(
         } catch (_: Exception) { }
         serverSocket = null
         // 正在传输的大文件流由中断触发关闭，避免传输线程长期滞留。
+        sockets.forEach { try { it.close() } catch (_: Exception) { } }
+        sockets.clear()
         pool.shutdownNow()
     }
 

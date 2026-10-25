@@ -14,11 +14,12 @@ struct DebugWindowApp: App {
 
     var body: some Scene {
         Window("FileWeave · 调试窗口", id: "debug") {
-            FileWeavePanelView(bridge: bridge)
+            FileWeavePanelView(bridge: bridge, showsRecordings: ProcessInfo.processInfo.environment["SNAPSHOT_PAGE"] == "recordings")
                 .environmentObject(app)
                 .task { await bringToFrontAndMaybeSnapshot(app) }
         }
-        .defaultSize(width: 380, height: 620)
+        .defaultSize(width: Metrics.panelWidth, height: Metrics.panelHeight)
+        .windowResizability(.contentSize)
     }
 
     @MainActor
@@ -54,10 +55,9 @@ struct DebugWindowApp: App {
             try? await Task.sleep(nanoseconds: 500_000_000)
         }
 
-        Snapshotter.capture(FileWeavePanelView(bridge: bridge).environmentObject(app),
-                            size: CGSize(width: 380, height: 620),
-                            scale: 2,
-                            to: path)
+        if let view = NSApp.windows.first(where: { $0.isVisible && $0.contentView != nil })?.contentView {
+            Snapshotter.capture(view, to: path)
+        }
         try? await Task.sleep(nanoseconds: 300_000_000)
         NSApplication.shared.terminate(nil)
     }
@@ -65,17 +65,11 @@ struct DebugWindowApp: App {
 
 @MainActor
 enum Snapshotter {
-    static func capture<V: View>(_ view: V, size: CGSize, scale: CGFloat, to path: String) {
-        let renderer = ImageRenderer(
-            content: view
-                .frame(width: size.width, height: size.height)
-                .background(Color(nsColor: .windowBackgroundColor))
-        )
-        renderer.scale = scale
-        guard let nsImage = renderer.nsImage,
-              let tiff = nsImage.tiffRepresentation,
-              let rep = NSBitmapImageRep(data: tiff),
-              let png = rep.representation(using: .png, properties: [:]) else { return }
+    static func capture(_ view: NSView, to path: String) {
+        view.layoutSubtreeIfNeeded()
+        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        guard let png = rep.representation(using: .png, properties: [:]) else { return }
         try? png.write(to: URL(fileURLWithPath: path))
         NSLog("SNAPSHOT saved: \(path)")
     }

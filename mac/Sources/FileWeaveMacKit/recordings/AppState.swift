@@ -391,6 +391,15 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
     ///
     /// 覆盖的失效面：手机换了 IP / 端口、共享文件夹重开、Mac 换了网段，
     /// 全部靠重新广播发现解决，**全程不需要碰手机**。
+    public func sendClipboardToPhone(_ text: String) async {
+        guard text.utf8.count <= 256 * 1024 - 1024 else { return }
+        do {
+            let current: RecordingSource
+            if let source { current = source } else { current = try await resolveSource() }
+            if let phone = current as? FileWeaveFolderSource { try await phone.sendClipboard(text) }
+        } catch { /* Background clipboard failure is retried by the existing phone pull path. */ }
+    }
+
     private func resolveSource() async throws -> RecordingSource {
         // 探测已有通道是否还活着，避免每轮都重新发现一遍。
         if let current = source, await sourceStillWorks(current) {
@@ -479,6 +488,29 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
         await refresh()
     }
 
+    private var syncingTranscripts = false
+    private var nextTranscriptSync = Date.distantPast
+
+    private func syncTranscripts(using channel: RecordingSource, recordings: [Recording]) async {
+        guard !syncingTranscripts, Date() >= nextTranscriptSync else { return }
+        syncingTranscripts = true
+        defer { syncingTranscripts = false }
+        // Small batches; failed writes remain pending across restarts, without re-running ASR.
+        for rec in recordings.filter({ library.transcript(for: $0.id).map { $0.phoneSynced != true } ?? false }).prefix(4) {
+            guard let record = library.transcript(for: rec.id) else { continue }
+            do {
+                try await Task.detached(priority: .utility) {
+                    let text = try String(contentsOfFile: record.txtPath, encoding: .utf8)
+                    try channel.uploadTranscript(path: rec.remotePath, text: text)
+                }.value
+                library.updateTranscript(rec.id) { $0.phoneSynced = true }
+            } catch {
+                nextTranscriptSync = Date().addingTimeInterval(30)
+                return
+            }
+        }
+    }
+
     public func refresh() async {
         guard !scanning else { return }
         scanning = true
@@ -499,6 +531,7 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
             // 扫完再补一次，才能覆盖「转录发生在录音入库之前」那种顺序。
             // 目录已经全对上时它扫一遍就返回，几乎不花开销。
             applyRebuiltTranscripts(liveRemotePaths: snap.live.map(\.remotePath))
+            await syncTranscripts(using: current, recordings: snap.live + snap.trash)
             let live = snap.live
             let livePaths = Set(live.map(\.remotePath))
             // 原位置已经又有同名文件，说明手机上现在是两份。
@@ -1467,6 +1500,7 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
         library.saveTranscript(rec.id, record: record)
         transcripts[rec.id] = record
         lastTranscriptURL = URL(fileURLWithPath: record.txtPath)
+        await syncTranscripts(using: channel, recordings: [rec])
 
         // 本地预览：瞬时、不联网，作为第二行内容
         let raw = (try? String(contentsOf: outcome.txtURL, encoding: .utf8)) ?? ""

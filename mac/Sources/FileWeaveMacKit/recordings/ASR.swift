@@ -1,7 +1,7 @@
 import Foundation
 import AppKit
 
-/// 本地转录服务：ffmpeg 转码 + FunASR 转写。
+/// 本地转录服务：ffmpeg 转码 + sherpa-onnx 转写。
 ///
 /// 全部在本机完成，音频不出网。
 /// 依赖一次性的安装脚本（venv + 模型），安装后 isInstalled 为 true。
@@ -19,6 +19,8 @@ public enum ASR {
     /// 转录脚本随 app 打包
     public static var script: URL? {
         Bundle.main.url(forResource: "transcribe", withExtension: "py")
+            ?? [MacPaths.base.appendingPathComponent("Resources/transcribe.py")]
+                .first { FileManager.default.fileExists(atPath: $0.path) }
     }
 
     public static var ffmpeg: String {
@@ -29,18 +31,27 @@ public enum ASR {
     }
 
     public static var isInstalled: Bool {
-        FileManager.default.isExecutableFile(atPath: python.path)
+        unavailableReason == nil
     }
 
     /// 给用户看的缺失说明，能区分「没装」和「脚本丢了」
     public static var unavailableReason: String? {
-        if isInstalled { return nil }
-        return "未安装转录环境。需要先运行安装脚本创建 Python 环境与下载模型。"
+        guard FileManager.default.isExecutableFile(atPath: python.path) else {
+            return "未安装转录环境，请运行 setup-asr.sh。"
+        }
+        guard script != nil else { return "转录脚本缺失" }
+        let model = supportDir.appendingPathComponent("models/sherpa-onnx-paraformer-zh-2023-03-28")
+        guard FileManager.default.fileExists(atPath: model.appendingPathComponent("tokens.txt").path),
+              ["model.int8.onnx", "model.onnx"].contains(where: {
+                  FileManager.default.fileExists(atPath: model.appendingPathComponent($0).path)
+              }) else { return "识别模型未安装完整，请运行 setup-asr.sh。" }
+        guard FileManager.default.isExecutableFile(atPath: ffmpeg) else { return "请先安装 ffmpeg" }
+        return nil
     }
 
     // MARK: 转码
 
-    /// 手机录音是 48kHz AAC，FunASR 要 16kHz 单声道 PCM
+    /// 手机录音是 48kHz AAC，sherpa-onnx 要 16kHz 单声道 PCM
     public static func convertToWav(input: URL, output: URL) async throws {
         // ffmpeg 不会自动建目录，父目录不存在会直接失败
         try FileManager.default.createDirectory(
@@ -154,7 +165,7 @@ public enum ASR {
             audioDuration: box.duration,
             sentenceCount: sentenceCount,
             speakerCount: speakerCount,
-            model: model == "sensevoice" ? "SenseVoice" : "Paraformer-zh",
+            model: model == "zipformer" ? "Zipformer-zh" : "Paraformer-zh",
             inferSeconds: inferSeconds
         )
     }
@@ -192,33 +203,37 @@ public enum ASR {
 
     private static func exec(_ exe: String, _ args: [String], timeout: TimeInterval) async throws -> ExecResult {
         try await withCheckedThrowingContinuation { cont in
-            let p = Process()
-            p.executableURL = URL(fileURLWithPath: exe)
-            p.arguments = args
-            let o = Pipe(), e = Pipe()
-            p.standardOutput = o; p.standardError = e
-            p.standardInput = FileHandle.nullDevice
-            var outData = Data(), errData = Data()
-            let group = DispatchGroup()
-            let q = DispatchQueue(label: "asr.exec", attributes: .concurrent)
-            q.async(group: group) { outData = o.fileHandleForReading.readDataToEndOfFile() }
-            q.async(group: group) { errData = e.fileHandleForReading.readDataToEndOfFile() }
-            do { try p.run() } catch {
-                cont.resume(throwing: ASRError.transcribeFailed("无法启动 \(exe): \(error.localizedDescription)"))
-                return
+            DispatchQueue.global(qos: .utility).async {
+                let p = Process()
+                p.executableURL = URL(fileURLWithPath: exe)
+                p.arguments = args
+                let o = Pipe(), e = Pipe()
+                p.standardOutput = o; p.standardError = e
+                p.standardInput = FileHandle.nullDevice
+                var outData = Data(), errData = Data()
+                let group = DispatchGroup()
+                let q = DispatchQueue(label: "asr.exec", attributes: .concurrent)
+                q.async(group: group) { outData = o.fileHandleForReading.readDataToEndOfFile() }
+                q.async(group: group) { errData = e.fileHandleForReading.readDataToEndOfFile() }
+                do { try p.run() } catch {
+                    try? o.fileHandleForWriting.close()
+                    try? e.fileHandleForWriting.close()
+                    cont.resume(throwing: ASRError.transcribeFailed("无法启动 \(exe): \(error.localizedDescription)"))
+                    return
+                }
+                if group.wait(timeout: .now() + timeout) == .timedOut {
+                    p.terminate()
+                    _ = group.wait(timeout: .now() + 3)
+                    cont.resume(throwing: ASRError.transcribeFailed("命令超时"))
+                    return
+                }
+                p.waitUntilExit()
+                cont.resume(returning: ExecResult(
+                    code: p.terminationStatus,
+                    out: String(data: outData, encoding: .utf8) ?? "",
+                    err: String(data: errData, encoding: .utf8) ?? ""
+                ))
             }
-            if group.wait(timeout: .now() + timeout) == .timedOut {
-                p.terminate()
-                _ = group.wait(timeout: .now() + 3)
-                cont.resume(throwing: ASRError.transcribeFailed("命令超时"))
-                return
-            }
-            p.waitUntilExit()
-            cont.resume(returning: ExecResult(
-                code: p.terminationStatus,
-                out: String(data: outData, encoding: .utf8) ?? "",
-                err: String(data: errData, encoding: .utf8) ?? ""
-            ))
         }
     }
 
@@ -239,9 +254,12 @@ public enum ASR {
             var errCollected = ""
             let start = Date()
 
+            let readers = DispatchGroup()
             // 逐行读 stdout
             let reader = DispatchQueue(label: "asr.stdout")
+            readers.enter()
             reader.async {
+                defer { readers.leave() }
                 let h = o.fileHandleForReading
                 var buffer = Data()
                 while let chunk = try? h.availableData, !chunk.isEmpty {
@@ -251,7 +269,7 @@ public enum ASR {
                         buffer.removeSubrange(buffer.startIndex...idx)
                         if let line = String(data: lineData, encoding: .utf8), !line.isEmpty {
                             onLine(line)
-                            reader.async(flags: .barrier) { collected += line + "\n" }
+                            collected += line + "\n"
                         }
                     }
                 }
@@ -268,15 +286,14 @@ public enum ASR {
             ticker.resume()
 
             let errReader = DispatchQueue(label: "asr.stderr")
+            readers.enter()
             errReader.async {
+                defer { readers.leave() }
                 let d = e.fileHandleForReading.readDataToEndOfFile()
                 errCollected = String(data: d, encoding: .utf8) ?? ""
             }
 
-            var finished = false
             let finish: (Int32) -> Void = { code in
-                guard !finished else { return }
-                finished = true
                 ticker.cancel()
                 let err = errCollected.trimmingCharacters(in: .whitespacesAndNewlines)
                 let out = collected.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -287,12 +304,16 @@ public enum ASR {
                 }
             }
 
-            p.terminationHandler = { proc in finish(proc.terminationStatus) }
+            p.terminationHandler = { proc in
+                readers.notify(queue: .global(qos: .utility)) { finish(proc.terminationStatus) }
+            }
 
             do {
                 try p.run()
             } catch {
-                finished = true
+                p.terminationHandler = nil
+                try? o.fileHandleForWriting.close()
+                try? e.fileHandleForWriting.close()
                 ticker.cancel()
                 cont.resume(throwing: ASRError.transcribeFailed("无法启动: \(error.localizedDescription)"))
                 return

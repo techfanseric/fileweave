@@ -26,6 +26,12 @@ abstract class NavigationItem {
 
     open fun isChecked(listener: Listener): Boolean = false
 
+    open val switchChecked: Boolean? = null
+    open val toggleOnRowClick: Boolean = true
+    open val switchEnabled: Boolean = true
+    open fun toggle(context: Context) {}
+    open fun configure(listener: Listener) {}
+
     abstract fun onClick(listener: Listener)
 
     open fun onLongClick(listener: Listener): Boolean = false

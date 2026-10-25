@@ -90,10 +90,17 @@ class FolderBridgeService : Service() {
         wakeWifiLock.isAcquired = true
         notification.startForeground(getString(R.string.fw_folder_bridge_state_summary_starting))
         status = Status(State.STARTING)
-        executorService.execute { doStart() }
+        executorService.execute {
+            try { doStart() } catch (error: Exception) {
+                mainExecutorCompat.execute { onStartError(error.localizedMessage) }
+            }
+        }
     }
 
     private fun onStartError(error: String?) {
+        server?.stop(); server = null
+        observer?.stop(); observer = null
+        nsd?.stop(); nsd = null
         // Failure is stated plainly in the status line and as a toast; nothing keeps running.
         status = Status(State.STOPPED, error = error)
         showToast(error ?: getString(R.string.fw_folder_bridge_error_start_unknown))
@@ -131,13 +138,14 @@ class FolderBridgeService : Service() {
             backend = FolderBridgeSafBackend(this, tree)
         } else {
             val defaultDirectory = FolderBridgeDefaults.detect()
-            if (defaultDirectory == null) {
-                mainExecutorCompat.execute {
-                    onStartError(getString(R.string.fw_folder_bridge_error_no_directory_auto))
+            backend = if (defaultDirectory != null) FolderBridgeFileBackend(defaultDirectory)
+                else object : FolderBridgeBackend {
+                    override val rootName = "Recordings"
+                    override fun listFiles() = emptyList<FolderBridgeItem>()
+                    override fun openFile(path: String): FolderBridgeOpenFile = throw java.io.FileNotFoundException()
+                    override fun trash(id: String, path: String): String = throw java.io.FileNotFoundException()
+                    override fun restore(id: String, path: String, to: String) { throw java.io.FileNotFoundException() }
                 }
-                return
-            }
-            backend = FolderBridgeFileBackend(defaultDirectory)
         }
 
         // Enrollment happens synchronously here: without a Mac-issued certificate the TLS server
@@ -174,7 +182,22 @@ class FolderBridgeService : Service() {
             }
             return
         }
-        val kernel = FolderBridgeKernel(backend, token, Build.MODEL)
+        val kernel = FolderBridgeKernel(backend, token, Build.MODEL) { path, text ->
+            TranscriptStore.save(this, path, text)
+        }
+        kernel.receiveClipboard = { text ->
+            val done = java.util.concurrent.CountDownLatch(1)
+            val failed = java.util.concurrent.atomic.AtomicBoolean(false)
+            mainExecutorCompat.execute {
+                try { me.zhanghai.android.files.bridge.AutomaticClipboard.receive(this, text) }
+                catch (_: Exception) { failed.set(true) }
+                finally { done.countDown() }
+            }
+            check(done.await(3, java.util.concurrent.TimeUnit.SECONDS) && !failed.get())
+        }
+        kernel.storageBackend = PairedShares::backend
+        kernel.selectionVersion = { PairedShares.selectionVersion }
+        kernel.recordingsEnabled = { PairedShares.recordings }
         kernel.onScan = { count ->
             mainExecutorCompat.execute {
                 if (this.status.state == State.RUNNING) {
@@ -438,7 +461,12 @@ class FolderBridgeNotification(private val service: Service) {
 class FolderBridgeReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (val action = intent.action) {
-            ACTION_STOP -> FolderBridgeService.stop(context)
+            ACTION_STOP -> {
+                PairedShares.files = false
+                PairedShares.recordings = false
+                PairedShares.clearSelection()
+                FolderBridgeService.stop(context)
+            }
             else -> throw IllegalArgumentException(action)
         }
     }

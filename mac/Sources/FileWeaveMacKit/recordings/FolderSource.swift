@@ -31,6 +31,7 @@ public protocol RecordingSource {
     var identity: String { get }
 
     /// 最轻量的连通性探测（GET /v1/status），重连判定用
+    func uploadTranscript(path: String, text: String) throws
     func probe() -> Bool
     func scan() throws -> SourceSnapshot
     /// 移入回收站，返回它在回收站里的新路径
@@ -39,6 +40,12 @@ public protocol RecordingSource {
     func restore(_ rec: Recording) throws
     /// 把当前所在位置的文件拉到本机
     func download(_ rec: Recording, to: URL) throws -> URL
+}
+
+public extension RecordingSource {
+    func uploadTranscript(path: String, text: String) throws {
+        throw SourceError.server("设备不支持转录同步")
+    }
 }
 
 public enum SourceError: LocalizedError {
@@ -255,7 +262,7 @@ public final class FileWeaveFolderSource: RecordingSource, @unchecked Sendable {
         let cfg = URLSessionConfiguration.ephemeral
         cfg.timeoutIntervalForRequest = 30
         // 列表要 SAF 逐级下钻，手机上可能要好几秒
-        cfg.timeoutIntervalForResource = 120
+        cfg.timeoutIntervalForResource = 3600
         session = URLSession(configuration: cfg,
                              delegate: PinningDelegate(fp: self.fp),
                              delegateQueue: nil)
@@ -297,6 +304,25 @@ public final class FileWeaveFolderSource: RecordingSource, @unchecked Sendable {
     }
 
     // MARK: RecordingSource
+
+    public func uploadTranscript(path: String, text: String) throws {
+        let data = Data(text.utf8)
+        guard data.count <= 1024 * 1024,
+              let url = Self.endpointURL(host: host, port: port, path: "/v1/transcript", query: ["path": path]) else {
+            throw SourceError.server("转录文本过大或路径无效")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 15
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("text/plain; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        request.httpBody = data
+        let (body, response) = try session.dataTaskSync(request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200,
+              let result = try? JSONDecoder().decode(ActionResponse.self, from: body), result.ok else {
+            throw SourceError.server("转录已保存在 Mac，等待同步到手机")
+        }
+    }
 
     public func probe() -> Bool {
         guard let url = Self.endpointURL(host: host, port: port, path: "/v1/status") else {
@@ -406,10 +432,12 @@ public final class FileWeaveFolderSource: RecordingSource, @unchecked Sendable {
     ///
     /// 返回第一个探测存活的通道；一台都没有时返回 nil（不抛，
     /// 让上层按「未连接」走退避，而不是把发现失败当错误刷屏）。
-    public static func discoverPaired(store: PairedDeviceStore = .shared,
+    public static func discoverPaired(store: PairedDeviceStore = .shared, deviceHash: String? = nil,
                                       browse: (TimeInterval) -> [FolderDiscovery.Candidate] =
                                           { FolderDiscovery.browse(timeout: $0) }) -> FileWeaveFolderSource? {
-        let records = store.devices()
+        let records = store.devices().filter { record in
+            deviceHash == nil || SHA256.hash(data: Data(record.token.utf8)).map { String(format: "%02x", $0) }.joined() == deviceHash
+        }
         let byFp = Dictionary(grouping: records.filter { fp in fp.folderFp != nil },
                               by: { $0.folderFp! })
         guard !byFp.isEmpty else { return nil }
@@ -562,5 +590,54 @@ extension URLSession {
         var data: Data?
         var response: URLResponse?
         var error: Error?
+    }
+}
+
+struct PhoneFile: Decodable, Identifiable {
+    let name: String
+    let directory: Bool
+    let size: Int64
+    var id: String { name }
+}
+struct PhoneFileListing: Decodable {
+    let enabled: Bool
+    let version: Int64
+    let items: [PhoneFile]
+}
+extension FileWeaveFolderSource {
+    private func storageRequest(path: String, selected: Bool, file: Bool) throws -> URLRequest {
+        guard let url = Self.endpointURL(host: host, port: port, path: file ? "/v1/storage/file" : "/v1/storage",
+                                        query: ["path": path, "selected": selected ? "1" : "0"]) else { throw SourceError.server("文件地址无效") }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = file ? 300 : 20
+        return request
+    }
+    func sendClipboard(_ text: String) async throws {
+        guard let url = Self.endpointURL(host: host, port: port, path: "/v1/clipboard") else { throw SourceError.server("剪贴板地址无效") }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 5
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("text/plain; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Data(text.utf8)
+        let (_, response) = try await session.data(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw SourceError.server("等待手机剪贴板连接") }
+    }
+    func listStorage(path: String, selected: Bool) async throws -> PhoneFileListing {
+        let (data, response) = try await session.data(for: storageRequest(path: path, selected: selected, file: false))
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw SourceError.server("无法读取手机目录，请检查共享开关和文件访问权限") }
+        let listing = try JSONDecoder().decode(PhoneFileListing.self, from: data)
+        guard listing.items.allSatisfy({ !$0.name.isEmpty && $0.name != "." && $0.name != ".." && !$0.name.contains("/") && !$0.name.contains("\\") && !$0.name.contains("\0") }) else { throw SourceError.server("手机返回了无效文件名") }
+        return listing
+    }
+    func downloadStorage(path: String, selected: Bool, to destination: URL) async throws {
+        let (temporary, response) = try await session.download(for: storageRequest(path: path, selected: selected, file: true))
+        defer { try? FileManager.default.removeItem(at: temporary) }
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+              http.value(forHTTPHeaderField: "Content-Type") == "application/octet-stream" else { throw SourceError.server("下载未完成，文件可能已取消共享") }
+        let size = (try FileManager.default.attributesOfItem(atPath: temporary.path)[.size] as? NSNumber)?.int64Value
+        guard size == http.expectedContentLength else { throw SourceError.server("文件传输不完整，请重试") }
+        try FileManager.default.moveItem(at: temporary, to: destination)
     }
 }

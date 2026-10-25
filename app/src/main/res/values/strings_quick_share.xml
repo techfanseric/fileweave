@@ -1,0 +1,15 @@
+<resources>
+    <string name="fw_share_to_mac">Send to Mac</string>
+    <string name="fw_share_sending">Sending to Mac…</string>
+    <string name="fw_send_clipboard_quick">Clipboard to Mac</string>
+    <string name="fw_server_configure">Connection settings</string>
+    <string name="fw_transcripts">Transcripts</string>
+    <string name="fw_transcripts_empty">Transcripts from your paired Mac are saved here for offline reading.</string>
+    <string name="fw_screen_captures">Screenshots &amp; recordings</string>
+    <string name="fw_recordings_browse">Browse recordings</string>
+    <string name="fw_global_files">Share phone storage with Mac</string>
+    <string name="fw_global_files_hint">The paired Mac can browse and copy files in accessible phone storage. Explicit selections remain available when this switch is off.</string>
+    <string name="fw_clear_shared_selection">Stop sharing the selected items</string>
+    <string name="fw_selection_shared">Selection is now highlighted on Mac.</string>
+    <string name="fw_clipboard_notification_hint">Tap to send. It closes automatically, then paste on Mac.</string>
+</resources>

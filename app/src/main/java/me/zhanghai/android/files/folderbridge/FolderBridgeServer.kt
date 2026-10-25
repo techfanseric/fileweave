@@ -121,8 +121,13 @@ class FolderBridgeServer(
 class FolderBridgeKernel(
     private val backend: FolderBridgeBackend,
     private val token: String,
-    private val model: String
+    private val model: String,
+    private val saveTranscript: ((String, String) -> Unit)? = null
 ) {
+    var storageBackend: ((Boolean) -> me.zhanghai.android.files.lanshare.LanShareKernel.Backend?)? = null
+    var receiveClipboard: ((String) -> Unit)? = null
+    var selectionVersion: () -> Long = { 0L }
+    var recordingsEnabled: () -> Boolean = { true }
     private val tokenBytes = token.toByteArray(Charsets.UTF_8)
 
     /** Files counted by the most recent scan; -1 when the last scan failed or has not run. */
@@ -171,6 +176,10 @@ class FolderBridgeKernel(
             read += count
         }
 
+        if (read != contentLength) {
+            respondJson(output, 400, errorJson("Incomplete body"))
+            return
+        }
         val parts = requestLine.text.split(" ")
         val method = parts.getOrNull(0) ?: return
         val target = parts.getOrNull(1) ?: "/"
@@ -184,10 +193,67 @@ class FolderBridgeKernel(
             return
         }
 
+        if (path == "/v1/storage" || path == "/v1/storage/file") {
+            if (method != "GET" && method != "HEAD") { respondJson(output, 405, errorJson("Read only")); return }
+            var responseStarted = false
+            try {
+                val selected = queryParam(query, "selected") == "1"
+                val storage = storageBackend?.invoke(selected)
+                if (storage == null) {
+                    respondJson(output, 200, "{\"enabled\":false,\"version\":${selectionVersion()},\"items\":[]}")
+                    return
+                }
+                val relative = queryParam(query, "path").orEmpty()
+                val segments = if (relative.isEmpty()) emptyList() else relative.split('/')
+                require(segments.all { it.isNotEmpty() && it != "." && it != ".." && '\\' !in it && '\u0000' !in it })
+                if (path.endsWith("/file")) {
+                    val escaped = segments.joinToString("/") { java.net.URLEncoder.encode(it, "UTF-8").replace("+", "%20") }
+                    val request = "$method /scope/$escaped HTTP/1.1\r\n" + (headers["range"]?.let { "Range: $it\r\n" } ?: "") + "\r\n"
+                    responseStarted = true
+                    me.zhanghai.android.files.lanshare.LanShareKernel("scope", storage).handle(request.byteInputStream(), output)
+                } else {
+                    val items = storage.list(segments).joinToString(",") {
+                        "{\"name\":${jsonQuote(it.name)},\"directory\":${it.directory},\"size\":${it.size}}"
+                    }
+                    respondJson(output, 200, "{\"enabled\":true,\"version\":${selectionVersion()},\"items\":[$items]}")
+                }
+            } catch (error: Exception) {
+                if (responseStarted) throw error
+                respondJson(output, 403, errorJson("Storage unavailable"))
+            }
+            return
+        }
+        if (!recordingsEnabled() && path in listOf("/v1/tree", "/v1/file", "/v1/trash", "/v1/restore")) {
+            if (path == "/v1/tree") respondJson(output, 200, "{\"ok\":true,\"items\":[]}")
+            else respondJson(output, 403, errorJson("Recordings sharing disabled"))
+            return
+        }
         when (path) {
+            "/v1/clipboard" -> dispatch(output, method, "POST") {
+                if (body.size > 256 * 1024 - 1024 || receiveClipboard == null) {
+                    respondJson(output, 400, errorJson("Clipboard unavailable"))
+                } else {
+                    try { receiveClipboard?.invoke(String(body, Charsets.UTF_8)); respondJson(output, 200, "{\"ok\":true}") }
+                    catch (_: Exception) { respondJson(output, 500, errorJson("Clipboard unavailable")) }
+                }
+            }
             "/v1/status" -> dispatch(output, method, "GET") { respondJson(output, 200, statusJson()) }
             "/v1/tree" -> dispatch(output, method, "GET") { respondJson(output, 200, treeJson()) }
             "/v1/file" -> dispatch(output, method, "GET") { serveFile(query, headers, output) }
+            "/v1/transcript" -> dispatch(output, method, "POST") {
+                val transcriptPath = queryParam(query, "path")
+                if (transcriptPath.isNullOrEmpty() || !FolderBridgePaths.isSafeRelativePath(transcriptPath)
+                    || body.isEmpty() || saveTranscript == null) {
+                    respondJson(output, 400, errorJson("Invalid transcript"))
+                } else {
+                    try {
+                        saveTranscript.invoke(transcriptPath, String(body, Charsets.UTF_8))
+                        respondJson(output, 200, "{\"ok\":true}")
+                    } catch (_: Exception) {
+                        respondJson(output, 500, errorJson("Unable to save transcript"))
+                    }
+                }
+            }
             "/v1/trash" -> dispatch(output, method, "POST") {
                 respondJson(output, 200, trashJson(body))
             }
@@ -219,8 +285,7 @@ class FolderBridgeKernel(
     // ---------------------------------------------------------------- Routing
 
     private fun statusJson(): String {
-        val items = scanReporting()
-        val files = items?.size ?: -1
+        val files = lastScanCount
         return "{\"proto\":1,\"model\":" + jsonQuote(model) + ",\"files\":" + files +
             ",\"root\":" + jsonQuote(backend.rootName) + "}"
     }
@@ -333,7 +398,7 @@ class FolderBridgeKernel(
             if (length >= 0) {
                 var remaining = length
                 val buffer = ByteArray(FILE_BUFFER_BYTES)
-                while (remaining > 0) {
+                while (remaining > 0 && recordingsEnabled() && !Thread.currentThread().isInterrupted) {
                     val count = input.read(buffer, 0, minOf(remaining, buffer.size.toLong()).toInt())
                     if (count < 0) {
                         break
@@ -344,7 +409,7 @@ class FolderBridgeKernel(
             } else {
                 // Unknown size: close-delimited body.
                 val buffer = ByteArray(FILE_BUFFER_BYTES)
-                while (true) {
+                while (recordingsEnabled() && !Thread.currentThread().isInterrupted) {
                     val count = input.read(buffer)
                     if (count < 0) {
                         break
@@ -417,7 +482,7 @@ class FolderBridgeKernel(
 
     companion object {
         const val MAX_HEADER_BYTES = 8 * 1024
-        const val MAX_BODY_BYTES = 4 * 1024
+        const val MAX_BODY_BYTES = 1024 * 1024
         const val FILE_BUFFER_BYTES = 256 * 1024
         private val RANGE_REGEX = Regex("bytes=([0-9]+)-([0-9]*)")
 

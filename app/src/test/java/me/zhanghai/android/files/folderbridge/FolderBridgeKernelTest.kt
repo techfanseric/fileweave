@@ -69,7 +69,26 @@ class FolderBridgeKernelTest {
     }
 
     private val backend = FakeBackend()
-    private val kernel = FolderBridgeKernel(backend, TOKEN, "Test Model")
+    private val transcripts = mutableMapOf<String, String>()
+    private val kernel = FolderBridgeKernel(backend, TOKEN, "Test Model") { path, text -> transcripts[path] = text }
+
+    @Test fun transcriptsRequireAuthAndSafePath() {
+        assertEquals(401, request("POST", "/v1/transcript?path=a.m4a", "hello", token = null).status)
+        assertTrue(transcripts.isEmpty())
+        assertEquals(400, request("POST", "/v1/transcript?path=../a", "hello").status)
+        assertEquals(200, request("POST", "/v1/transcript?path=Call/a.m4a", "转录文本").status)
+        assertEquals("转录文本", transcripts["Call/a.m4a"])
+        assertEquals(200, request("POST", "/v1/transcript?path=Call/a.m4a", "更新").status)
+        assertEquals(1, transcripts.size)
+    }
+
+    @Test fun heartbeatDoesNotScanStorage() {
+        seedFiles()
+        assertTrue(request("GET", "/v1/status").bodyText.contains("\"files\":-1"))
+        request("GET", "/v1/tree")
+        backend.listFailure = IllegalStateException("Must not scan")
+        assertTrue(request("GET", "/v1/status").bodyText.contains("\"files\":2"))
+    }
 
     private fun request(method: String, target: String, body: String? = null,
                         token: String? = TOKEN, extraHeaders: List<String> = emptyList()): Response {
@@ -133,6 +152,7 @@ class FolderBridgeKernelTest {
     @Test
     fun statusReportsProtocolModelFilesAndRoot() {
         seedFiles()
+        request("GET", "/v1/tree")
         val response = request("GET", "/v1/status")
         assertEquals(200, response.status)
         assertTrue(response.bodyText.contains("\"proto\":1"))

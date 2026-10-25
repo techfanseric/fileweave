@@ -13,12 +13,15 @@ import me.zhanghai.android.files.util.valueCompat
  */
 object FolderBridgeSettings {
     /** SAF tree Uri (ACTION_OPEN_DOCUMENT_TREE) of the directory shared with the Mac. */
-    val DIRECTORY = StringSettingLiveData(
+    // The observable is UI-only; background service reads must not initialize LiveData.
+    val DIRECTORY by lazy { StringSettingLiveData(
         R.string.pref_key_folder_bridge_directory, R.string.pref_default_value_empty
-    )
+    ) }
 
     fun getTreeUri(context: Context): Uri? {
-        val value = DIRECTORY.valueCompat
+        val value = me.zhanghai.android.files.app.defaultSharedPreferences.getString(
+            context.getString(R.string.pref_key_folder_bridge_directory), ""
+        ).orEmpty()
         if (value.isEmpty()) {
             return null
         }

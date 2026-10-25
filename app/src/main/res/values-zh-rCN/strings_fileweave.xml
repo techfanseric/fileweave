@@ -29,7 +29,7 @@
     <string name="fw_operation_failed">操作失败</string>
     <string name="fw_vault_store_action">加密存入保险库</string>
     <string name="fw_bridge_title">共享文件</string>
-    <string name="fw_bridge_send_action">发送到 Mac</string>
+    <string name="fw_bridge_send_action">共享到 Mac</string>
     <string name="fw_bridge_trust">与 %1$s 配对</string>
     <string name="fw_bridge_ready">正在自动连接…</string>
     <string name="fw_bridge_send_clipboard">发送手机剪贴板到 Mac</string>
@@ -65,7 +65,7 @@
     <string name="fw_bridge_finish">已在 Mac 核对，完成配对</string>
     <string name="fw_bridge_choose_mac">选择要使用的 Mac。</string>
     <string name="fw_bridge_reapprove">连接授权已失效，正在重新请求 Mac 批准。</string>
-    <string name="fw_folder_bridge_title">共享录音文件夹给 Mac</string>
+    <string name="fw_folder_bridge_title">录音与转录</string>
     <string name="fw_folder_bridge_state_title">服务</string>
     <string name="fw_folder_bridge_state_summary_starting">正在启动…</string>
     <string name="fw_folder_bridge_state_summary_running">运行中</string>

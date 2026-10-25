@@ -357,6 +357,17 @@ class Handler(BaseHTTPRequestHandler):
                     target = self.server.inbox / (secrets.token_hex(4) + '-' + name)
                     os.link(temporary, target)
                 self.json(201, {'name': target.name, 'ok': True})
+            elif endpoint == '/v1/highlight':
+                json.loads(b''.join(self.body(MAX_EVENT_BODY)))
+                event = {'id': secrets.token_hex(16), 'time': time.time(),
+                         'device': hashlib.sha256(self.bearer().encode()).hexdigest()}
+                with self.server.events_lock:
+                    temporary = self.server.state / ('.highlight-' + secrets.token_hex(8))
+                    with open(temporary, 'x', encoding='utf-8') as dest:
+                        os.chmod(temporary, 0o600)
+                        json.dump(event, dest)
+                    os.replace(temporary, self.server.state / 'highlight.json')
+                self.json(200, {'ok': True})
             elif endpoint == '/v1/notify':
                 value = json.loads(b''.join(self.body(MAX_EVENT_BODY)))
                 if not isinstance(value, dict) or value.get('type') != 'folder-update':

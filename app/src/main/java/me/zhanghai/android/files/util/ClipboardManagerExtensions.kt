@@ -15,6 +15,7 @@ var ClipboardManager.primaryText: CharSequence
     get() = primaryClip?.firstOrNull()?.coerceToText(application)!!
     set(value) {
         setPrimaryClip(ClipData.newPlainText(null, value))
+        me.zhanghai.android.files.bridge.AutomaticClipboard.copied(value.toString())
     }
 
 private const val TOAST_COPIED_TEXT_MAX_LENGTH = 40

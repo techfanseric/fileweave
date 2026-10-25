@@ -117,6 +117,7 @@ import me.zhanghai.android.files.util.createSendStreamIntent
 import me.zhanghai.android.files.util.createViewIntent
 import me.zhanghai.android.files.util.extraPath
 import me.zhanghai.android.files.util.extraPathList
+import me.zhanghai.android.files.util.extraPathList
 import me.zhanghai.android.files.util.fadeToVisibilityUnsafe
 import me.zhanghai.android.files.util.getQuantityString
 import me.zhanghai.android.files.util.hasSw600Dp
@@ -572,6 +573,10 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
             }
             R.id.action_show_hidden_files -> {
                 setShowHiddenFiles(!menuBinding.showHiddenFilesItem.isChecked)
+                true
+            }
+            R.id.action_lan_share -> {
+                shareOnLan(listOf(currentPath))
                 true
             }
             R.id.action_share -> {
@@ -1039,6 +1044,14 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
                 showCreateArchiveDialog(viewModel.selectedFiles)
                 true
             }
+            R.id.action_fw_send_mac -> {
+                startActivity(Intent(requireContext(), me.zhanghai.android.files.bridge.SendFileActivity::class.java).apply { extraPathList = viewModel.selectedFiles.map { it.path } })
+                true
+            }
+            R.id.action_lan_share -> {
+                shareOnLan(viewModel.selectedFiles.map { it.path })
+                true
+            }
             R.id.action_share -> {
                 shareFiles(viewModel.selectedFiles)
                 true
@@ -1364,6 +1377,12 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
     override fun encryptFile(file: FileItem) {
         startActivity(Intent(requireContext(), me.zhanghai.android.files.vault.VaultActivity::class.java).apply { extraPath = file.path })
     }
+    override fun shareOnLan(file: FileItem) = shareOnLan(listOf(file.path))
+
+    private fun shareOnLan(paths: List<Path>) {
+        startActivity(Intent(requireContext(), me.zhanghai.android.files.lanshare.LanShareActivity::class.java).apply { extraPathList = paths })
+    }
+
     override fun sendToMac(file: FileItem) {
         startActivity(Intent(requireContext(), me.zhanghai.android.files.bridge.BridgeActivity::class.java).apply { extraPath = file.path })
     }

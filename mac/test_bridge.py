@@ -38,6 +38,16 @@ class BridgeTests(unittest.TestCase):
         conn.close()
         return status, result
 
+    def test_highlight_requires_pairing_and_contains_no_bearer(self):
+        self.assertEqual(self.request('POST', '/v1/highlight', b'{}', authorized=False)[0], 401)
+        self.assertEqual(self.request('POST', '/v1/highlight', b'{}')[0], 200)
+        event = json.loads((self.server.state / 'highlight.json').read_text())
+        self.assertEqual(len(event['device']), 64)
+        self.assertNotIn(self.server.token, json.dumps(event))
+        first = event['id']
+        self.assertEqual(self.request('POST', '/v1/highlight', b'{}')[0], 200)
+        self.assertNotEqual(first, json.loads((self.server.state / 'highlight.json').read_text())['id'])
+
     def test_requires_pairing(self):
         self.assertEqual(self.request('GET', '/v1/status', authorized=False)[0], 401)
         self.assertEqual(self.request('POST', '/v1/clipboard', b'{}', authorized=False)[0], 401)

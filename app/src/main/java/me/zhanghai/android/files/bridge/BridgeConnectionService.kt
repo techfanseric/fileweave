@@ -57,6 +57,7 @@ class BridgeConnectionService : Service() {
     private var config: BridgeConfig? = null
     private var client: BridgeClient? = null
     private var lastRefresh = 0L
+    private var lastFilesRefresh = 0L
     private var lastDiscoveryRestart = 0L
     private var discoveryFailed = false
     private var connecting = AtomicBoolean(false)
@@ -101,7 +102,7 @@ class BridgeConnectionService : Service() {
         config = BridgeStore.read(application)
         restartDiscovery()
         while (true) {
-            delay(1000)
+            delay(if (_state.valueCompat.connected) REFRESH_INTERVAL_MILLIS else 5_000L)
             if (discoveryFailed && now() - lastDiscoveryRestart >= 10_000) restartDiscovery()
             if (_state.valueCompat.connected) {
                 if (now() - lastRefresh >= REFRESH_INTERVAL_MILLIS) refresh()
@@ -133,7 +134,7 @@ class BridgeConnectionService : Service() {
     }
 
     private fun autoConnect() {
-        if (connecting.get() || pairingJob?.isActive == true) return
+        if (connecting.get() || pairingJob?.isActive == true || !retry.ready(now())) return
         val saved = config
         if (saved == null) {
             // Zero-touch pairing: only when exactly one Mac is around.
@@ -151,8 +152,8 @@ class BridgeConnectionService : Service() {
     private fun connect(proposed: BridgeConfig) {
         if (!connecting.compareAndSet(false, true)) return
         scope.launch {
+            val bridge = BridgeClient(proposed)
             try {
-                val bridge = BridgeClient(proposed)
                 val result = withContext(Dispatchers.IO) {
                     val info = bridge.json("status")
                     require(info.getInt("protocol") == 1)
@@ -165,6 +166,8 @@ class BridgeConnectionService : Service() {
                 BridgeStore.save(application, proposed)
                 retry.reset()
                 lastRefresh = now()
+                me.zhanghai.android.files.folderbridge.PairedShares.ensureStarted(this@BridgeConnectionService)
+                lastFilesRefresh = lastRefresh
                 updateState { it.copy(connected = true, phase = Phase.CONNECTED, macName = result.first, files = result.second) }
                 refreshNotification()
                 // 连接就绪后才开始观察新截屏；内部会先看截屏推送开关。
@@ -173,6 +176,7 @@ class BridgeConnectionService : Service() {
                 if (error is CancellationException) throw error
                 recover(error)
             } finally {
+                if (client !== bridge) bridge.close()
                 connecting.set(false)
             }
         }
@@ -181,20 +185,21 @@ class BridgeConnectionService : Service() {
     private suspend fun refresh() {
         val bridge = client ?: return
         lastRefresh = now()
+        val refreshFiles = now() - lastFilesRefresh >= 30_000
+        val previousFiles = _state.valueCompat.files
         try {
             val (files, macClipboard) = withContext(Dispatchers.IO) {
-                val files = readFiles(bridge)
+                val files = if (refreshFiles) readFiles(bridge) else previousFiles
                 val text = bridge.json("clipboard").optString("text")
                 files to text
             }
+            if (refreshFiles) lastFilesRefresh = now()
             updateState { it.copy(files = files) }
             if (macClipboard.isNotEmpty() && macClipboard != lastMacClipboard) {
                 lastMacClipboard = macClipboard
                 // A background service may write the clipboard; reading it still needs
                 // focus, which is why the phone -> Mac direction stays user-triggered.
-                getSystemService(ClipboardManager::class.java).setPrimaryClip(
-                    ClipData.newPlainText("FileWeave", macClipboard)
-                )
+                AutomaticClipboard.receive(this, macClipboard)
                 updateState { it.copy(macClipboard = macClipboard) }
             }
         } catch (error: Exception) {
@@ -271,7 +276,10 @@ class BridgeConnectionService : Service() {
                 } catch (_: Exception) {
                     updateState { it.copy(phase = Phase.RETRYING) }
                 }
-            } ?: updateState { it.copy(phase = Phase.RETRYING) }
+            } ?: run {
+                retry.failed(now())
+                updateState { it.copy(phase = Phase.RETRYING) }
+            }
         }
     }
 
@@ -314,9 +322,16 @@ class BridgeConnectionService : Service() {
             this, BridgeConnectionReceiver::class.hashCode(), disableIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        val clipboardPendingIntent = PendingIntent.getActivity(
+            this, SendClipboardActivity::class.hashCode(), Intent(this, SendClipboardActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
         return bridgeConnectionNotificationTemplate.createBuilder(this)
-            .setContentText(text)
-            .setContentIntent(contentPendingIntent)
+            .setContentText(if (_state.valueCompat.connected) getString(R.string.fw_clipboard_notification_hint) else text)
+            .setContentTitle(if (_state.valueCompat.connected) getString(R.string.fw_send_clipboard_quick) else getString(R.string.fw_bridge_connection_title))
+            .setContentIntent(if (_state.valueCompat.connected) clipboardPendingIntent else contentPendingIntent)
+            .addAction(R.drawable.clipboard_icon_white_24dp,
+                getString(R.string.fw_send_clipboard_quick), clipboardPendingIntent)
             .addAction(
                 R.drawable.stop_icon_white_24dp, getString(R.string.fw_bridge_connection_disable),
                 disablePendingIntent

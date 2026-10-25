@@ -44,4 +44,18 @@
             android:ellipsize="end"
             android:maxLines="1" />
     </LinearLayout>
+    <androidx.appcompat.widget.SwitchCompat
+        android:id="@+id/serverSwitch"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+    <androidx.appcompat.widget.AppCompatImageButton
+        android:id="@+id/serverSettings"
+        android:layout_width="48dp"
+        android:layout_height="match_parent"
+        android:src="@drawable/settings_icon_white_24dp"
+        android:tint="?android:attr/textColorSecondary"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/fw_server_configure"
+        android:visibility="gone" />
 </me.zhanghai.android.files.ui.CheckableForegroundLinearLayout>

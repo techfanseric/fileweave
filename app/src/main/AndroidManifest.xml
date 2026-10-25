@@ -369,6 +369,33 @@
             </intent-filter>
         </activity>
 
+        <activity android:name="me.zhanghai.android.files.bridge.ShareToMacActivity"
+            android:exported="true" android:label="@string/fw_share_to_mac"
+            android:excludeFromRecents="true">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+        <activity android:name="me.zhanghai.android.files.bridge.SendFileActivity" android:exported="false" android:excludeFromRecents="true" />
+        <activity android:name="me.zhanghai.android.files.bridge.SendClipboardActivity"
+            android:exported="false" android:excludeFromRecents="true" android:taskAffinity=""
+            android:theme="@style/Theme.MaterialFiles.Translucent" />
+        <service android:name="me.zhanghai.android.files.bridge.ClipboardTileService"
+            android:exported="true" android:icon="@drawable/clipboard_icon_white_24dp"
+            android:label="@string/fw_send_clipboard_quick"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            tools:ignore="NewApi">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+        <activity android:name="me.zhanghai.android.files.folderbridge.TranscriptActivity" android:exported="false" />
         <activity android:name="me.zhanghai.android.files.bridge.BridgeActivity" android:exported="false" />
         <activity
             android:name="me.zhanghai.android.files.bridge.ClipboardActivity"
@@ -401,6 +428,11 @@
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="This is a generic file manager app offering a FTP server functionality that allows serving files from local or network storages to the local network, and users expect it to keep serving in the background for days or even weeks once they start it and until they manually end it, so that this service has to use specialUse to maintain the user expected behavior of keeping serving the files until manually ended." />
+        </service>
+
+        <activity android:name="me.zhanghai.android.files.lanshare.LanShareActivity" android:exported="false" />
+        <service android:name="me.zhanghai.android.files.lanshare.LanShareService" android:exported="false" android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="User initiated temporary read-only local network file sharing, active until stopped or the device locks." />
         </service>
 
         <!-- WebDAV 服务器前台服务：类型与理由文案与 FtpServerService 保持一致（同为

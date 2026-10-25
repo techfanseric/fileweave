@@ -137,6 +137,12 @@ class BridgeClient(val config: BridgeConfig) {
             JSONObject(String(output.toByteArray(), Charsets.UTF_8))
         }
     }
+    fun highlightSelection() {
+        val body = "{}".toRequestBody("application/json".toMediaType())
+        http.newCall(request("highlight").post(body).build()).execute().use {
+            if (!it.isSuccessful) throw IOException("Unable to highlight selection")
+        }
+    }
     fun sendClipboard(text: String) {
         require(text.toByteArray().size <= 256 * 1024 - 1024)
         val body = JSONObject().put("text", text).toString().toRequestBody("application/json; charset=utf-8".toMediaType())

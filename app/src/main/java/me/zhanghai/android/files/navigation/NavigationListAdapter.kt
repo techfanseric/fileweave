@@ -230,7 +230,18 @@ class NavigationListAdapter(
                 if (payloads.isNotEmpty()) {
                     return
                 }
-                binding.itemLayout.setOnClickListener { item.onClick(listener) }
+                val checked = item.switchChecked
+                binding.serverSwitch.visibility = if (checked != null) android.view.View.VISIBLE else android.view.View.GONE
+                binding.serverSettings.visibility = binding.serverSwitch.visibility
+                binding.serverSwitch.setOnCheckedChangeListener(null)
+                binding.serverSwitch.isChecked = checked == true
+                binding.serverSwitch.isEnabled = item.switchEnabled
+                binding.serverSwitch.contentDescription = item.getTitle(binding.root.context)
+                binding.serverSwitch.setOnCheckedChangeListener { _, _ -> item.toggle(binding.root.context) }
+                binding.serverSettings.setOnClickListener { item.configure(listener) }
+                binding.itemLayout.setOnClickListener {
+                    if (checked != null && item.toggleOnRowClick) item.toggle(binding.root.context) else item.onClick(listener)
+                }
                 binding.itemLayout.setOnLongClickListener { item.onLongClick(listener) }
                 binding.iconImage.setImageDrawable(item.getIcon(binding.iconImage.context))
                 binding.titleText.text = item.getTitle(binding.titleText.context)

@@ -1,0 +1,12 @@
+<resources>
+    <string name="fw_preview_location">Location</string>
+    <string name="fw_lan_share">Share on local network</string>
+    <string name="fw_lan_scope">Sharing %1$d selected items</string>
+    <string name="fw_lan_no_network">Connect to a local Wi-Fi network first</string>
+    <string name="fw_lan_hint">Anyone with this link on the same network can browse and download only the selected items. This is a read-only HTTP link. Stopping sharing or locking the phone revokes it. Creating another share replaces this link.</string>
+    <string name="fw_lan_copy">Copy link</string>
+    <string name="fw_lan_send">Send link</string>
+    <string name="fw_lan_copied">Link copied</string>
+    <string name="fw_lan_stopped">Sharing stopped</string>
+    <string name="fw_lan_starting">Creating link…</string>
+</resources>

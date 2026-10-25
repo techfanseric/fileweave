@@ -9,6 +9,7 @@ struct LibraryEntry: Codable, Equatable {
 
 /// 一条已完成的转录结果，用于跨次启动保留「已转录」状态
 public struct TranscriptRecord: Codable, Equatable {
+    var phoneSynced: Bool?
     var txtPath: String
     var sentenceCount: Int
     var speakerCount: Int

@@ -17,7 +17,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.zhanghai.android.files.R
 import me.zhanghai.android.files.features.FeatureActivity
-import me.zhanghai.android.files.provider.common.newInputStream
 import me.zhanghai.android.files.util.extraPath
 import me.zhanghai.android.files.util.valueCompat
 import me.zhanghai.android.files.viewer.video.BridgeVideoActivity
@@ -32,7 +31,6 @@ import me.zhanghai.android.files.viewer.video.BridgeVideoActivity
 class BridgeActivity : FeatureActivity() {
     private var busy = false
     private var client: BridgeClient? = null
-    private var pendingPath: java8.nio.file.Path? = null
     private var downloading: String? = null
     private val picker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) work { bridge ->
@@ -65,10 +63,15 @@ class BridgeActivity : FeatureActivity() {
         super.onCreate(savedInstanceState)
         // 剪贴板内容与配对凭据不得出现在截图中。
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
-        pendingPath = intent.extraPath
+        if (intent.extraPath != null) {
+            startActivity(Intent(intent).setClass(this, SendFileActivity::class.java))
+            finish()
+            return
+        }
         downloading = savedInstanceState?.getString("downloading")
         render()
         BridgeConnectionService.stateLiveData.observe(this) { render() }
+        me.zhanghai.android.files.folderbridge.PairedShares.changes.observe(this) { render() }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -84,18 +87,17 @@ class BridgeActivity : FeatureActivity() {
             state.phase == BridgeConnectionService.Phase.PAIRING -> getString(R.string.fw_bridge_connection_pairing)
             else -> getString(R.string.fw_bridge_history_status_disconnected)
         })
-        button(getString(R.string.fw_bridge_send_file)) { picker.launch(arrayOf("*/*")) }
-        pendingPath?.let { path ->
-            button(getString(R.string.fw_bridge_send_selected, path.fileName)) {
-                work { bridge ->
-                    val counting = CountingInputStream(path.newInputStream())
-                    counting.use { bridge.upload(path.fileName.toString(), it) }
-                    pendingPath = null
-                    BridgeHistoryStore.add(this@BridgeActivity, BridgeHistoryStore.Entry.file(outgoing = true, name = path.fileName.toString(), size = counting.count))
-                    getString(R.string.fw_bridge_sent)
-                }
-            }
+        val shares = me.zhanghai.android.files.folderbridge.PairedShares
+        content.addView(com.google.android.material.switchmaterial.SwitchMaterial(this).apply {
+            text = getString(R.string.fw_global_files)
+            isChecked = shares.files
+            setOnCheckedChangeListener { _, checked -> shares.files = checked }
+        })
+        text(getString(R.string.fw_global_files_hint))
+        if (shares.selectionVersion != 0L) {
+            button(getString(R.string.fw_clear_shared_selection)) { shares.clearSelection() }
         }
+        button(getString(R.string.fw_bridge_send_file)) { picker.launch(arrayOf("*/*")) }
         // 互通历史为主体：倒序逐行展示，空态给出引导。
         val history = BridgeHistoryStore.list(this)
         text(getString(R.string.fw_bridge_history_title))

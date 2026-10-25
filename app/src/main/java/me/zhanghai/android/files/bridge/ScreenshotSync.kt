@@ -16,23 +16,9 @@ import java.io.File
 import me.zhanghai.android.files.settings.Settings
 import me.zhanghai.android.files.util.valueCompat
 
-/**
- * 截屏自动互通：系统截屏落盘到 Pictures/Screenshots 后，把这张图推送到已配对
- * Mac 的收件箱（bridge.py 的 POST /v1/file），做到“截完屏 Mac 即可读取”。
- *
- * 为什么用 ContentObserver + MediaStore 而不是定时轮询：图片入库时 MediaStore 会
- * 主动通知，事件驱动零空转；截屏是低频事件，轮询只会在绝大多数周期里白白查库
- * 耗电。API 29+ 用 RELATIVE_PATH 圈定 Pictures/Screenshots；本项目 minSdk 23，
- * 低于 29 没有 RELATIVE_PATH，退回对 /storage/emulated/0/Pictures/Screenshots 的
- * FileObserver（CLOSE_WRITE / MOVED_TO 都意味着写入方已收尾，避免读到半截文件）。
- *
- * 隐私边界：只上传路径明确位于 Screenshots 目录内的图片（目录本身或其子目录），
- * 相册里的其他图片一概不碰，也不做任何内容分析。注册时不回扫历史，避免每次
- * 重连把旧截屏重传一遍；只处理注册之后的新通知。
- *
- * 传输策略：与 BridgeActivity 一致，每次上传用独立的短连接 BridgeClient，不复用
- * 常驻服务的长连接，后台传输的成败不干扰连接状态机。失败静默放弃——截屏随时
- * 可以重拍，不值得为它建重试队列，用户下次截屏自然就是一次新尝试。
+/** Event-driven sync of new images and finished videos inside Pictures/Screenshots.
+ * No gallery-wide uploads or background polling; API 29+ excludes pending media rows.
+ * Legacy devices observe completed writes in the same directory.
  */
 object ScreenshotSync {
     /** 只认落库时间在此窗口内的图片，防止迟到的重复通知翻出陈旧行。 */
@@ -56,6 +42,7 @@ object ScreenshotSync {
     private var contentObserver: ContentObserver? = null
     private var fileObserver: FileObserver? = null
     private var settingsObserved = false
+    private var startedAtSeconds = 0L
 
     /**
      * 已上传/已放弃的文件 key -> 记录时间。仅在 worker 线程读写，stop 时在主线程
@@ -100,6 +87,7 @@ object ScreenshotSync {
         if (observing) return
         val app = appContext ?: return
         observing = true
+        startedAtSeconds = System.currentTimeMillis() / 1000
         val thread = HandlerThread("FileWeave-screenshot-sync").apply { start() }
         handlerThread = thread
         worker = Handler(thread.looper)
@@ -114,6 +102,8 @@ object ScreenshotSync {
             }
             // 对整个图片库树注册（notifyForDescendants），具体圈定在查询条件里完成。
             app.contentResolver.registerContentObserver(images, true, observer)
+            app.contentResolver.registerContentObserver(
+                MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), true, observer)
             contentObserver = observer
         } else {
             observeScreenshotsDirectory(app)
@@ -152,27 +142,29 @@ object ScreenshotSync {
         synchronized(remembered) { remembered.clear() }
     }
 
-    /** API 29+：落库通知到达后，查最近窗口内 Screenshots 目录的新图片。 */
+    /** API 29+：落库通知到达后，查最近窗口内 Screenshots 目录的新图片与已完成的视频。 */
     private fun scanRecent(app: Context) {
         val config = BridgeStore.read(app) ?: return
-        val since = System.currentTimeMillis() / 1000 - RECENT_WINDOW_SECONDS
+        val since = maxOf(startedAtSeconds, System.currentTimeMillis() / 1000 - RECENT_WINDOW_SECONDS)
         val projection = arrayOf(
             MediaStore.Images.Media._ID,
             MediaStore.Images.Media.DISPLAY_NAME,
-            MediaStore.Images.Media.DATE_ADDED,
+            MediaStore.Images.Media.DATE_MODIFIED,
             MediaStore.Images.Media.RELATIVE_PATH
         )
         // 隐私边界：不用 LIKE 'Pictures/Screenshots%'，那个写法会误伤同前缀目录
         // （如手工建的 ScreenshotsBackup）；只认目录本身或其一级及更深的子目录。
-        val selection = "${MediaStore.Images.Media.DATE_ADDED} >= ?" +
+        val selection = "${MediaStore.Images.Media.DATE_MODIFIED} >= ?" +
             " AND (${MediaStore.Images.Media.RELATIVE_PATH} = ?" +
-            " OR ${MediaStore.Images.Media.RELATIVE_PATH} LIKE ?)"
+            " OR ${MediaStore.Images.Media.RELATIVE_PATH} LIKE ?)" +
+            " AND ${MediaStore.MediaColumns.IS_PENDING} = 0" +
+            " AND ${MediaStore.Files.FileColumns.MEDIA_TYPE} IN (1, 3)"
         val arguments = arrayOf(since.toString(), "Pictures/Screenshots/", "Pictures/Screenshots/%")
         try {
             app.contentResolver.query(
-                MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY),
+                MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY),
                 projection, selection, arguments,
-                "${MediaStore.Images.Media.DATE_ADDED} DESC"
+                "${MediaStore.Images.Media.DATE_MODIFIED} DESC"
             )?.use { cursor ->
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(0)
@@ -193,7 +185,7 @@ object ScreenshotSync {
         val bridge = BridgeClient(config)
         try {
             val uri = ContentUris.withAppendedId(
-                MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), id)
+                MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), id)
             app.contentResolver.openInputStream(uri)?.use { input ->
                 // 文件名保持原截屏名（DISPLAY_NAME），Mac 端同名不会互相覆盖。
                 bridge.upload(name, input)
@@ -208,8 +200,8 @@ object ScreenshotSync {
     /** API 23–28 分支：直接读 Screenshots 目录里的新文件。 */
     @Suppress("DEPRECATION")
     private fun uploadLegacy(app: Context, file: File) {
-        // 只推常见截屏图片格式，目录里可能混有第三方应用写入的其他文件。
-        if (!file.isFile || file.extension.lowercase() !in setOf("png", "jpg", "jpeg", "webp")) return
+        // 只推常见截图与录屏格式，目录里可能混有第三方应用写入的其他文件。
+        if (!file.isFile || file.extension.lowercase() !in setOf("png", "jpg", "jpeg", "webp", "mp4", "mkv", "webm", "3gp")) return
         if (!remember("file:${file.absolutePath}")) return
         val config = BridgeStore.read(app) ?: return
         val bridge = BridgeClient(config)

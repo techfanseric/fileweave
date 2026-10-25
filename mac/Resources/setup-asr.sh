@@ -58,7 +58,7 @@ for f in pyannote-segmentation-3-0.onnx \
   if [ -f "$TT/$f" ]; then
     cp -n "$TT/$f" "$MODELS/speaker/$f" && echo "  复用 $f"
   else
-    echo "  缺少 $f，需从 sherpa-onnx releases 手动下载"
+    echo "  缺少 ${f}，需从 sherpa-onnx releases 手动下载"
   fi
 done
 
