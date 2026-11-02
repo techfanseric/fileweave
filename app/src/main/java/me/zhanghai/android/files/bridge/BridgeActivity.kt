@@ -1,5 +1,10 @@
 package me.zhanghai.android.files.bridge
 
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Switch
+import androidx.compose.ui.res.stringResource
+import me.zhanghai.android.files.design.*
+import me.zhanghai.android.files.file.asFileSize
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -80,65 +85,49 @@ class BridgeActivity : FeatureActivity() {
 
     private fun render() {
         val state = BridgeConnectionService.stateLiveData.valueCompat
-        screen(getString(R.string.fw_bridge_title))
-        // 顶部只保留一行紧凑状态：连接由后台维护，页面聚焦历史与文件操作。
-        text(when {
-            state.connected -> getString(R.string.fw_bridge_connection_connected, state.macName.orEmpty())
-            state.phase == BridgeConnectionService.Phase.PAIRING -> getString(R.string.fw_bridge_connection_pairing)
-            else -> getString(R.string.fw_bridge_history_status_disconnected)
-        })
         val shares = me.zhanghai.android.files.folderbridge.PairedShares
-        content.addView(com.google.android.material.switchmaterial.SwitchMaterial(this).apply {
-            text = getString(R.string.fw_global_files)
-            isChecked = shares.files
-            setOnCheckedChangeListener { _, checked -> shares.files = checked }
-        })
-        text(getString(R.string.fw_global_files_hint))
-        if (shares.selectionVersion != 0L) {
-            button(getString(R.string.fw_clear_shared_selection)) { shares.clearSelection() }
-        }
-        button(getString(R.string.fw_bridge_send_file)) { picker.launch(arrayOf("*/*")) }
-        // 互通历史为主体：倒序逐行展示，空态给出引导。
-        val history = BridgeHistoryStore.list(this)
-        text(getString(R.string.fw_bridge_history_title))
-        if (history.isEmpty()) {
-            text(getString(R.string.fw_bridge_history_empty))
-        } else {
-            history.forEach { entry -> text(entry.formatForDisplay(this)) }
-        }
-        // Mac 共享的文件列表放在历史下方，用独立标题与历史区分。
-        text(getString(R.string.fw_bridge_history_shared_title))
-        if (state.files.isEmpty()) text(getString(R.string.fw_bridge_shared_empty))
-        state.files.forEach { (name, _) ->
-            button(name) {
-                val video = name.substringAfterLast('.', "").lowercase() in setOf("mp4", "mkv", "webm", "mov", "m4v", "avi", "3gp", "ts")
-                val actions = if (video) arrayOf(getString(R.string.fw_bridge_play), getString(R.string.fw_bridge_download)) else arrayOf(getString(R.string.fw_bridge_download))
-                MaterialAlertDialogBuilder(this).setTitle(name).setItems(actions) { _, index ->
-                    if (video && index == 0) {
-                        val config = BridgeStore.read(this) ?: return@setItems
-                        startActivity(Intent(this, BridgeVideoActivity::class.java)
-                            .setDataAndType(Uri.parse(BridgeClient(config).url("file", name).toString()),
-                                android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substringAfterLast('.').lowercase()) ?: "video/*"))
-                    } else { downloading = name; destination.launch(name) }
-                }.show()
+        composeScreen {
+            FeaturePage(stringResource(R.string.fw_bridge_title), { finish() }, busy = busy,
+                actions = buildList {
+                    add(PageAction(stringResource(R.string.fw_redesign_all_history)) { startActivity(Intent(this@BridgeActivity, TransfersActivity::class.java)) })
+                    if (shares.selectionVersion != 0L) add(PageAction(stringResource(R.string.fw_clear_shared_selection)) { shares.clearSelection() })
+                }) {
+                item { StatusLine(when {
+                    state.connected -> getString(R.string.fw_bridge_connection_connected, state.macName.orEmpty())
+                    state.phase == BridgeConnectionService.Phase.PAIRING -> getString(R.string.fw_bridge_connection_pairing)
+                    state.phase == BridgeConnectionService.Phase.RETRYING -> getString(R.string.fw_bridge_connection_retrying)
+                    else -> getString(R.string.fw_bridge_connection_finding)
+                }) }
+                item { PrimaryAction(stringResource(R.string.fw_bridge_send_file), enabled = state.connected && !busy) { picker.launch(arrayOf("*/*")) } }
+                item { SectionTitle(stringResource(R.string.fw_bridge_history_shared_title)) }
+                if (state.files.isEmpty()) item {
+                    EmptyContent(stringResource(R.string.fw_redesign_file_empty),
+                        stringResource(if (state.connected) R.string.fw_redesign_file_hint else R.string.fw_redesign_device_hint), R.drawable.computer_icon_white_24dp)
+                }
+                items(state.files, key = { it.first }) { (name, size) ->
+                    ContentRow(name, size.asFileSize().formatHumanReadable(this@BridgeActivity), enabled = !busy,
+                        onClick = { openSharedFile(name) })
+                }
+                item { SectionTitle(stringResource(R.string.fw_redesign_phone_sharing)) }
+                item { ContentRow(stringResource(R.string.fw_global_files), stringResource(R.string.fw_global_files_hint),
+                    R.drawable.directory_icon_white_24dp, trailing = {
+                        Switch(checked = shares.files, onCheckedChange = { shares.files = it }, enabled = !busy)
+                    }) }
             }
         }
-        // 清空入口固定在页面底部，仅在确有历史时展示。
-        if (history.isNotEmpty()) button(getString(R.string.fw_bridge_history_clear)) { confirmClear() }
     }
 
-    private fun confirmClear() {
-        MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.fw_bridge_history_clear)
-            .setMessage(R.string.fw_bridge_history_clear_confirm)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                lifecycleScope.launch {
-                    withContext(Dispatchers.IO) { BridgeHistoryStore.clear(this@BridgeActivity) }
-                    render()
-                }
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
+    private fun openSharedFile(name: String) {
+        val video = name.substringAfterLast('.', "").lowercase() in setOf("mp4", "mkv", "webm", "mov", "m4v", "avi", "3gp", "ts")
+        val actions = if (video) arrayOf(getString(R.string.fw_bridge_play), getString(R.string.fw_bridge_download)) else arrayOf(getString(R.string.fw_bridge_download))
+        MaterialAlertDialogBuilder(this).setTitle(name).setItems(actions) { _, index ->
+            if (video && index == 0) {
+                val config = BridgeStore.read(this) ?: return@setItems
+                startActivity(Intent(this, BridgeVideoActivity::class.java)
+                    .setDataAndType(Uri.parse(BridgeClient(config).url("file", name).toString()),
+                        android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substringAfterLast('.').lowercase()) ?: "video/*"))
+            } else { downloading = name; destination.launch(name) }
+        }.show()
     }
 
     private fun work(action: suspend (BridgeClient) -> String) {
@@ -147,7 +136,7 @@ class BridgeActivity : FeatureActivity() {
             return
         }
         if (busy) return
-        busy = true
+        busy = true; render()
         lifecycleScope.launch {
             val bridge = client ?: BridgeClient(config).also { client = it }
             try {

@@ -1,7 +1,5 @@
 package me.zhanghai.android.files.folderbridge
 
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -9,10 +7,10 @@ import android.content.Intent
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.os.Build
+import android.os.Environment
 import android.os.IBinder
+import android.os.StatFs
 import androidx.annotation.WorkerThread
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LiveData
@@ -22,8 +20,6 @@ import me.zhanghai.android.files.app.NotificationIds
 import me.zhanghai.android.files.app.application
 import me.zhanghai.android.files.bridge.BridgeStore
 import me.zhanghai.android.files.compat.mainExecutorCompat
-import me.zhanghai.android.files.util.NotificationChannelTemplate
-import me.zhanghai.android.files.util.NotificationTemplate
 import me.zhanghai.android.files.util.WakeWifiLock
 import me.zhanghai.android.files.util.createIntent
 import me.zhanghai.android.files.util.showToast
@@ -88,7 +84,7 @@ class FolderBridgeService : Service() {
             return
         }
         wakeWifiLock.isAcquired = true
-        notification.startForeground(getString(R.string.fw_folder_bridge_state_summary_starting))
+        notification.startForeground()
         status = Status(State.STARTING)
         executorService.execute {
             try { doStart() } catch (error: Exception) {
@@ -196,13 +192,21 @@ class FolderBridgeService : Service() {
             check(done.await(3, java.util.concurrent.TimeUnit.SECONDS) && !failed.get())
         }
         kernel.storageBackend = PairedShares::backend
+        kernel.storageCapacity = {
+            val stat = StatFs(Environment.getExternalStorageDirectory().path)
+            FolderBridgeKernel.StorageCapacity(stat.totalBytes, stat.availableBytes)
+        }
         kernel.selectionVersion = { PairedShares.selectionVersion }
         kernel.recordingsEnabled = { PairedShares.recordings }
+        val screenshots = ScreenshotBackend(Environment.getExternalStorageDirectory()) { file ->
+            android.media.MediaScannerConnection.scanFile(this, arrayOf(file.absolutePath), null, null)
+        }
+        kernel.screenshotsBackend = { screenshots.takeIf { PairedShares.files } }
         kernel.onScan = { count ->
             mainExecutorCompat.execute {
                 if (this.status.state == State.RUNNING) {
                     this.status = this.status.copy(fileCount = count)
-                    notification.update(notificationText(this.status))
+                    notification.update()
                 }
             }
         }
@@ -246,36 +250,16 @@ class FolderBridgeService : Service() {
             mainExecutorCompat.execute {
                 if (this.status.state == State.RUNNING && !this.status.nsdFailed) {
                     this.status = this.status.copy(nsdFailed = failed)
-                    notification.update(notificationText(this.status))
+                    notification.update()
                 }
             }
         }
 
         val started = Status(State.RUNNING, port = FolderBridgeServer.DEFAULT_PORT)
         postStatus(started)
-        notification.update(notificationText(started))
+        notification.update()
     }
 
-    private fun notificationText(status: Status): String {
-        val builder = StringBuilder()
-        when (status.state) {
-            State.RUNNING -> {
-                builder.append(getString(R.string.fw_folder_bridge_notification_running,
-                    status.port ?: FolderBridgeServer.DEFAULT_PORT))
-                if (status.fileCount >= 0) {
-                    builder.append(' ').append(getString(
-                        R.string.fw_folder_bridge_notification_files, status.fileCount))
-                }
-                if (status.nsdFailed) {
-                    builder.append(' ').append(
-                        getString(R.string.fw_folder_bridge_notification_nsd_failed))
-                }
-            }
-            State.STARTING -> builder.append(getString(R.string.fw_folder_bridge_state_summary_starting))
-            else -> {}
-        }
-        return builder.toString().ifEmpty { getString(R.string.fw_folder_bridge_title) }
-    }
 
     @WorkerThread
     private fun doStop() {
@@ -403,58 +387,23 @@ class FolderBridgeNsd(private val context: Context) {
     }
 }
 
-internal val folderBridgeServiceNotificationTemplate =
-    NotificationTemplate(
-        NotificationChannelTemplate(
-            "folder_bridge",
-            R.string.notification_channel_folder_bridge_name,
-            NotificationManagerCompat.IMPORTANCE_LOW,
-            descriptionRes = R.string.notification_channel_folder_bridge_description,
-            showBadge = false
-        ),
-        colorRes = R.color.color_primary,
-        smallIcon = R.drawable.notification_icon,
-        contentTitleRes = R.string.fw_folder_bridge_title,
-        ongoing = true,
-        onlyAlertOnce = true,
-        category = NotificationCompat.CATEGORY_SERVICE,
-        priority = NotificationCompat.PRIORITY_LOW
-    )
-
-/** The persistent notification doubles as the status light for the user. */
+/** The persistent notification is merged with the bridge connection's (see MacLinkNotification). */
 class FolderBridgeNotification(private val service: Service) {
-    fun startForeground(text: String) {
-        service.startForeground(NotificationIds.FOLDER_BRIDGE, build(text))
-    }
-
-    fun update(text: String) {
-        service.getSystemService(NotificationManager::class.java)?.notify(
-            NotificationIds.FOLDER_BRIDGE, build(text)
+    fun startForeground() {
+        service.startForeground(
+            NotificationIds.BRIDGE_CONNECTION,
+            me.zhanghai.android.files.bridge.MacLinkNotification.build(service)
         )
     }
 
-    private fun build(text: String): android.app.Notification {
-        val contentIntent = FolderBridgeActivity::class.createIntent()
-        val contentPendingIntent = PendingIntent.getActivity(
-            service, FolderBridgeActivity::class.hashCode(), contentIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val stopIntent = FolderBridgeReceiver.createIntent()
-        val stopPendingIntent = PendingIntent.getBroadcast(
-            service, FolderBridgeReceiver::class.hashCode(), stopIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        return folderBridgeServiceNotificationTemplate.createBuilder(service)
-            .setContentText(text)
-            .setContentIntent(contentPendingIntent)
-            .addAction(
-                R.drawable.stop_icon_white_24dp, service.getString(R.string.stop), stopPendingIntent
-            )
-            .build()
+    fun update() {
+        me.zhanghai.android.files.bridge.MacLinkNotification.notify(service)
     }
 
     fun stopForeground() {
         ServiceCompat.stopForeground(service, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        // 本服务退出前台会连带移除合并通知，由常驻的连接服务补回来。
+        me.zhanghai.android.files.bridge.BridgeConnectionService.repostIfRunning()
     }
 }
 

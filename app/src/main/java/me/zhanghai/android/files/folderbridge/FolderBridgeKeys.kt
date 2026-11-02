@@ -147,6 +147,7 @@ object FolderBridgeKeys {
     private const val KEY_FILE = "folder-key.pem"
     private const val PUBLIC_FILE = "folder-public.pem"
     private const val CERT_FILE = "folder-cert.pem"
+    private const val ENROLLMENT_TOKEN_FILE = "folder-enrollment-token"
     private const val CN_PREFIX = "FileWeave Folder"
     private const val KEY_SIZE = 2048
 
@@ -185,6 +186,26 @@ object FolderBridgeKeys {
         keyFile(context).delete()
         publicFile(context).delete()
         certFile(context).delete()
+        enrollmentTokenFile(context).delete()
+    }
+
+    /**
+     * True when the stored certificate was issued under a Mac pairing other than the
+     * current one. The Mac binds a certificate fingerprint to the pairing that presented
+     * it, so after the phone re-paired (or the Mac lost its records) the old certificate
+     * can never match again and must be re-issued against the current pairing.
+     */
+    fun isEnrollmentStale(context: Context): Boolean {
+        if (!hasCert(context)) {
+            return false
+        }
+        val current = try {
+            BridgeStore.read(context)?.token
+        } catch (_: Exception) {
+            null
+        } ?: return false
+        val enrolled = enrollmentTokenFile(context).takeIf { it.exists() }?.readText()
+        return enrolled != current
     }
 
     /** SHA-256 hex of the issued certificate's DER encoding, advertised over NSD. */
@@ -220,12 +241,12 @@ object FolderBridgeKeys {
     }
 
     /**
-     * Ensures a Mac-issued certificate exists, enrolling over the pinned pairing channel when
-     * needed. Returns the certificate fingerprint.
+     * Ensures a certificate issued under the CURRENT Mac pairing exists, enrolling over the
+     * pinned pairing channel when missing or stale. Returns the certificate fingerprint.
      */
     @Throws(Exception::class)
     fun ensureCertificate(context: Context): String {
-        if (hasCert(context)) {
+        if (hasCert(context) && !isEnrollmentStale(context)) {
             fingerprint(context)?.let { return it }
         }
         forgetAll(context)
@@ -234,6 +255,8 @@ object FolderBridgeKeys {
         val csr = ensureKeyAndCsr(context)
         val certificate = requestCertificate(config, csr)
         storeCert(context, certificate)
+        // 记录签发时所用的 Mac 配对：配对更换后据此自动重签（isEnrollmentStale）。
+        writePrivate(enrollmentTokenFile(context), config.token)
         return fingerprint(context)
             ?: throw IOException("Fingerprint unavailable after enrollment")
     }
@@ -303,6 +326,8 @@ object FolderBridgeKeys {
     private fun keyFile(context: Context): File = File(context.noBackupFilesDir, KEY_FILE)
     private fun publicFile(context: Context): File = File(context.noBackupFilesDir, PUBLIC_FILE)
     private fun certFile(context: Context): File = File(context.noBackupFilesDir, CERT_FILE)
+    private fun enrollmentTokenFile(context: Context): File =
+        File(context.noBackupFilesDir, ENROLLMENT_TOKEN_FILE)
 
     private fun sha256Hex(bytes: ByteArray): String =
         MessageDigest.getInstance("SHA-256").digest(bytes)

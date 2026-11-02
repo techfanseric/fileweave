@@ -45,32 +45,59 @@ class FileListViewModel : ViewModel() {
     val searchState: SearchState
         get() = _searchStateLiveData.valueCompat
 
-    fun search(query: String) {
-        val searchState = _searchStateLiveData.valueCompat
-        if (searchState.isSearching && searchState.query == query) {
-            return
+    val quickFiltersExpandedLiveData = MutableLiveData(false)
+    var isQuickFiltersExpanded: Boolean
+        get() = quickFiltersExpandedLiveData.valueCompat
+        set(value) {
+            if (quickFiltersExpandedLiveData.valueCompat != value) quickFiltersExpandedLiveData.value = value
         }
-        _searchStateLiveData.value = SearchState(true, query, searchState.filters)
+
+    private fun updateSearchState(query: String, filters: SearchFilters) {
+        val next = createFileSearchState(query, filters)
+        val current = searchState
+        if (current.isSearching == next.isSearching && current.query == next.query &&
+            current.filters == next.filters) return
+        _searchStateLiveData.value = next
+    }
+
+    fun search(query: String) {
+        searchViewQuery = query
+        updateSearchState(query, searchState.filters)
     }
 
     fun setSearchFilters(filters: SearchFilters) {
-        _searchStateLiveData.value = SearchState(true, searchViewQuery, filters)
+        updateSearchState(searchViewQuery, filters)
+    }
+
+    fun clearSearchQuery() {
+        searchViewQuery = ""
+        updateSearchState("", searchState.filters)
     }
 
     fun stopSearching() {
-        val searchState = _searchStateLiveData.valueCompat
-        if (!searchState.isSearching) {
-            return
-        }
-        _searchStateLiveData.value = SearchState(false, "")
+        isQuickFiltersExpanded = false
+        searchViewQuery = ""
+        updateSearchState("", SearchFilters())
     }
 
+    val recentFilesLiveData = MutableLiveData(false)
+    var isRecentFiles: Boolean
+        get() = recentFilesLiveData.valueCompat
+        set(value) { recentFilesLiveData.value = value }
+
     private val _fileListLiveData =
-        FileListSwitchMapLiveData(currentPathLiveData, _searchStateLiveData)
+        FileListSwitchMapLiveData(currentPathLiveData, _searchStateLiveData, recentFilesLiveData)
     val fileListLiveData: LiveData<Stateful<List<FileItem>>>
         get() = _fileListLiveData
     val fileListStateful: Stateful<List<FileItem>>
         get() = _fileListLiveData.valueCompat
+
+    val recentFilesHasMore: Boolean get() = _fileListLiveData.recentSource?.hasMore == true
+    val recentFilesLoading: Boolean get() = _fileListLiveData.recentSource?.isLoading == true
+    val recentFilesLoadingMore: Boolean get() = _fileListLiveData.recentSource?.isLoadingMore == true
+    val recentFilesLoadMoreFailed: Boolean get() = _fileListLiveData.recentSource?.loadMoreFailed == true
+
+    fun loadMoreRecentFiles() { _fileListLiveData.recentSource?.loadMore() }
 
     fun reload() {
         val path = currentPath
@@ -247,13 +274,16 @@ class FileListViewModel : ViewModel() {
 
     private class FileListSwitchMapLiveData(
         private val pathLiveData: LiveData<Path>,
-        private val searchStateLiveData: LiveData<SearchState>
+        private val searchStateLiveData: LiveData<SearchState>,
+        private val recentFilesLiveData: LiveData<Boolean>
     ) : MediatorLiveData<Stateful<List<FileItem>>>(), Closeable {
         private var liveData: CloseableLiveData<Stateful<List<FileItem>>>? = null
+        val recentSource: RecentFilesLiveData? get() = liveData as? RecentFilesLiveData
 
         init {
             addSource(pathLiveData) { updateSource() }
             addSource(searchStateLiveData) { updateSource() }
+            addSource(recentFilesLiveData) { updateSource() }
         }
 
         private fun updateSource() {
@@ -263,7 +293,12 @@ class FileListViewModel : ViewModel() {
             }
             val path = pathLiveData.valueCompat
             val searchState = searchStateLiveData.valueCompat
-            val liveData = if (searchState.isSearching) {
+            val liveData = if (recentFilesLiveData.value == true) {
+                RecentFilesLiveData(
+                    query = if (searchState.isSearching) searchState.query else "",
+                    filters = if (searchState.isSearching) searchState.filters else SearchFilters()
+                )
+            } else if (searchState.isSearching) {
                 SearchFileListLiveData(path, searchState.query, searchState.filters)
             } else {
                 FileListLiveData(path)
@@ -276,6 +311,7 @@ class FileListViewModel : ViewModel() {
             when (val liveData = liveData) {
                 is FileListLiveData -> liveData.loadValue()
                 is SearchFileListLiveData -> liveData.loadValue()
+                is RecentFilesLiveData -> liveData.loadValue()
             }
         }
 

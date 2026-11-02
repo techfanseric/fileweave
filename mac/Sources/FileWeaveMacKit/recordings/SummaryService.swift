@@ -19,9 +19,9 @@ public enum SummaryService {
 
         public var errorDescription: String? {
             switch self {
-            case .noCredential: return "找不到 API 凭据"
+            case .noCredential: return L("找不到 API 凭据")
             case .badResponse(let m): return m
-            case .empty: return "模型没有返回内容"
+            case .empty: return L("模型没有返回内容")
             }
         }
     }
@@ -108,13 +108,7 @@ public enum SummaryService {
 
     // MARK: AI 摘要
 
-    private static let systemPrompt = """
-    你是一个通话/语音记录的摘要助手。规则：
-    1. 用**一句话**概括，**不超过 30 个字**。
-    2. 直接说内容本身，不要写「这段录音讨论了」「主要内容是」这类前缀。
-    3. 涉及时间、人名、决定时保留关键信息。
-    4. 如果内容零碎没有主题，就写出最主要的一件事。
-    """
+    private static var systemPrompt: String { L("你是一个通话/语音记录的摘要助手。规则：\n1. 用**一句话**概括，**不超过 30 个字**。\n2. 直接说内容本身，不要写「这段录音讨论了」「主要内容是」这类前缀。\n3. 涉及时间、人名、决定时保留关键信息。\n4. 如果内容零碎没有主题，就写出最主要的一件事。") }
 
     public static func summarize(transcript: String,
                                  config: Config,
@@ -141,7 +135,7 @@ public enum SummaryService {
             "model": config.model,
             "messages": [
                 ["role": "system", "content": systemPrompt],
-                ["role": "user", "content": "转录文本：\n" + prompt],
+                ["role": "user", "content": L("转录文本：\n") + prompt],
             ],
             "max_tokens": 120,
             "temperature": 0.3,
@@ -160,10 +154,10 @@ public enum SummaryService {
         }
 
         guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw SummaryError.badResponse("返回格式无法解析")
+            throw SummaryError.badResponse(L("返回格式无法解析"))
         }
         if let err = obj["error"] as? [String: Any] {
-            throw SummaryError.badResponse(err["message"] as? String ?? "接口报错")
+            throw SummaryError.badResponse(err["message"] as? String ?? L("接口报错"))
         }
         guard let choices = obj["choices"] as? [[String: Any]],
               let msg = choices.first?["message"] as? [String: Any],

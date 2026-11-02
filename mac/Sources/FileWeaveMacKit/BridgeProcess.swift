@@ -1,5 +1,12 @@
 import AppKit
 
+public enum BridgeAvailability: Equatable {
+    case starting
+    case ready
+    case recovering
+    case discoveryFailed
+}
+
 /// bridge.py 所在目录与运行期状态目录的统一出口。
 ///
 /// 这套路径刻意**跟着源码走**而不是跟着 .app 走：bridge.py / pairing.py /
@@ -34,10 +41,13 @@ public final class BridgeProcess: NSObject, ObservableObject, NetServiceDelegate
     /// 状态行文案。右键菜单和面板顶部共用这一份。
     @Published public private(set) var highlightID = ""
     public private(set) var highlightDevice: String?
-    @Published public private(set) var statusLine = "FileWeave · 正在自动连接手机"
+    @Published public private(set) var statusLine = L("FileWeave · 正在自动连接手机")
     /// 状态行的悬浮说明（发布成功/失败时各有一句指引）
     @Published public private(set) var statusToolTip: String?
+    @Published public private(set) var availability: BridgeAvailability = .starting
+    @Published public private(set) var showingApproval = false
 
+    private var languageObserver: NSObjectProtocol?
     private var process: Process?
     private var discovery: NetService?
     private var discoveryIdentity: String?
@@ -48,10 +58,21 @@ public final class BridgeProcess: NSObject, ObservableObject, NetServiceDelegate
     private var restartDelay: TimeInterval = 1
     private var startedAt = Date.distantPast
     private var nextPublish = Date.distantPast
-    private var showingApproval = false
 
     public override init() {
         super.init()
+        if DebugPreview.isEnabled {
+            statusLine = L("FileWeave · 自动连接已就绪")
+            statusToolTip = L("同一局域网内的手机会自动发现并连接。")
+            availability = .ready
+        }
+        languageObserver = NotificationCenter.default.addObserver(forName: .fileWeaveLanguageChanged, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.statusLine = LocalizedText.refresh(self.statusLine)
+                self.statusToolTip = self.statusToolTip.map(LocalizedText.refresh)
+            }
+        }
     }
 
     // MARK: 生命周期
@@ -94,7 +115,9 @@ public final class BridgeProcess: NSObject, ObservableObject, NetServiceDelegate
             process = child
             startedAt = Date()
         } catch {
-            statusLine = "FileWeave · 连接恢复中"
+            statusLine = L("FileWeave · 连接恢复中")
+            statusToolTip = nil
+            availability = .recovering
             discoveryLog("Service start failed; automatic retry scheduled")
         }
     }
@@ -110,7 +133,9 @@ public final class BridgeProcess: NSObject, ObservableObject, NetServiceDelegate
     private func pollEnrollment() {
         guard process?.isRunning == true else {
             discovery?.stop(); discovery = nil; discoveryIdentity = nil
-            statusLine = "FileWeave · 连接恢复中"
+            statusLine = L("FileWeave · 连接恢复中")
+            statusToolTip = nil
+            availability = .recovering
             startServer()
             return
         }
@@ -128,6 +153,7 @@ public final class BridgeProcess: NSObject, ObservableObject, NetServiceDelegate
             let identity = "\(pin):\(port)"
             if discoveryIdentity != identity && Date() >= nextPublish {
                 discovery?.stop()
+                availability = .starting
                 let service = NetService(domain: "local.", type: "_fileweave._tcp.",
                                          name: Host.current().localizedName ?? "FileWeave Mac", port: port)
                 service.setTXTRecord(NetService.data(fromTXTRecord: ["v": Data("1".utf8), "pin": Data(pin.utf8)]))
@@ -146,10 +172,10 @@ public final class BridgeProcess: NSObject, ObservableObject, NetServiceDelegate
               let code = request["code"], let name = request["name"], let address = request["address"] else { return }
         shownRequests.insert(id)
         let dialog = NSAlert()
-        dialog.messageText = "允许 \(name) 与 FileWeave 配对？"
-        dialog.informativeText = "手机地址：\(address)\n配对码：\(code)\n\n请核对手机上显示的配对码完全一致，再点击允许。批准后此手机可访问共享文件夹并主动操作剪贴板，之后会自动连接。请求 2 分钟后过期。"
-        dialog.addButton(withTitle: "配对码一致，允许")
-        dialog.addButton(withTitle: "拒绝")
+        dialog.messageText = L("允许 {0} 与 FileWeave 配对？", name)
+        dialog.informativeText = L("手机地址：{0}\n配对码：{1}\n\n请核对手机上显示的配对码完全一致，再点击允许。批准后此手机可访问共享文件夹并主动操作剪贴板，之后会自动连接。请求 2 分钟后过期。", address, code)
+        dialog.addButton(withTitle: L("配对码一致，允许"))
+        dialog.addButton(withTitle: L("拒绝"))
         NSApp.activate(ignoringOtherApps: true)
         showingApproval = true
         let approved = dialog.runModal() == .alertFirstButtonReturn
@@ -159,7 +185,7 @@ public final class BridgeProcess: NSObject, ObservableObject, NetServiceDelegate
             let value = try JSONSerialization.data(withJSONObject: ["approved": approved])
             try value.write(to: destination, options: .atomic)
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
-        } catch { alert("无法保存连接批准", "连接会自动重试，请稍候。") }
+        } catch { alert(L("无法保存连接批准"), L("连接会自动重试，请稍候。")) }
     }
 
     // NetServiceDelegate 的方法在协议里是 nonisolated 的；publish() 是从主线程
@@ -167,8 +193,9 @@ public final class BridgeProcess: NSObject, ObservableObject, NetServiceDelegate
     public nonisolated func netServiceDidPublish(_ sender: NetService) {
         MainActor.assumeIsolated {
             guard sender === self.discovery else { return }
-            self.statusLine = "FileWeave · 自动连接已就绪"
-            self.statusToolTip = "同一局域网内的手机会自动发现并连接。"
+            self.statusLine = L("FileWeave · 自动连接已就绪")
+            self.statusToolTip = L("同一局域网内的手机会自动发现并连接。")
+            self.availability = .ready
             self.discoveryLog("Bonjour published")
         }
     }
@@ -176,8 +203,9 @@ public final class BridgeProcess: NSObject, ObservableObject, NetServiceDelegate
     public nonisolated func netService(_ sender: NetService, didNotPublish errorDict: [String: NSNumber]) {
         MainActor.assumeIsolated {
             guard sender === self.discovery else { return }
-            self.statusLine = "FileWeave · 等待局域网访问"
-            self.statusToolTip = "请检查系统设置中的局域网访问权限，程序会自动恢复发现。"
+            self.statusLine = L("FileWeave · 等待局域网访问")
+            self.statusToolTip = L("局域网发布失败；请检查局域网访问权限，程序会自动重试。")
+            self.availability = .discoveryFailed
             self.discovery?.stop(); self.discovery = nil; self.discoveryIdentity = nil
             self.nextPublish = Date().addingTimeInterval(30)
             self.discoveryLog("Bonjour publish failed: \(errorDict)")
@@ -206,6 +234,6 @@ public final class BridgeProcess: NSObject, ObservableObject, NetServiceDelegate
     public func openLog() { NSWorkspace.shared.open(MacPaths.state.appendingPathComponent("server.log")) }
 
     private func alert(_ title: String, _ text: String) {
-        let dialog = NSAlert(); dialog.messageText = title; dialog.informativeText = text; dialog.runModal()
+        let dialog = NSAlert(); dialog.messageText = title; dialog.informativeText = text; dialog.addButton(withTitle: L("好")); dialog.runModal()
     }
 }

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="wrap_content">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:padding="24dp">
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="@string/fw_view_display" android:labelFor="@id/viewMode" />
+        <Spinner android:id="@+id/viewMode" android:layout_width="match_parent" android:layout_height="48dp" />
+        <CheckBox android:id="@+id/viewDetails" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/fw_show_details" />
+        <CheckBox android:id="@+id/viewHidden" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/file_list_action_show_hidden_files" />
+        <LinearLayout android:id="@+id/sortSection" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:orientation="vertical" android:paddingTop="16dp">
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="@string/fw_view_sorting" android:labelFor="@id/sortField" />
+            <Spinner android:id="@+id/sortField" android:layout_width="match_parent" android:layout_height="48dp" />
+            <CheckBox android:id="@+id/sortAscending" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/file_list_action_sort_order_ascending" />
+            <CheckBox android:id="@+id/sortDirectories" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/file_list_action_sort_directories_first" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="@string/fw_view_scope" android:paddingTop="16dp" />
+            <CheckBox android:id="@+id/sortScope" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/file_list_action_view_sort_path_specific" />
+        </LinearLayout>
+        <TextView android:id="@+id/recentSortNote" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:text="@string/fw_recent_fixed_sort" android:paddingTop="16dp" />
+    </LinearLayout>
+</ScrollView>

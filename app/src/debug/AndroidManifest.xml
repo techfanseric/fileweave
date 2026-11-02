@@ -1,4 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <instrumentation android:name="me.zhanghai.android.files.diagnostics.RecentFilesInstrumentation"
+        android:targetPackage="${applicationId}" android:label="FileWeave recent files check" />
     <instrumentation android:name="me.zhanghai.android.files.diagnostics.SmokeInstrumentation"
         android:targetPackage="${applicationId}" android:label="FileWeave development checks" />
     <instrumentation android:name="me.zhanghai.android.files.diagnostics.PlayerGestureInstrumentation"
@@ -15,7 +17,25 @@
         android:targetPackage="${applicationId}" android:label="FileWeave search filter checks" />
     <instrumentation android:name="me.zhanghai.android.files.diagnostics.QuickShareInstrumentation"
         android:targetPackage="${applicationId}" android:label="FileWeave quick sharing checks" />
+    <instrumentation android:name="me.zhanghai.android.files.diagnostics.RecentLanInstrumentation"
+        android:targetPackage="${applicationId}" android:label="FileWeave recent and LAN isolated QA checks" />
+    <instrumentation android:name="me.zhanghai.android.files.diagnostics.AudioPlayerInstrumentation"
+        android:targetPackage="${applicationId}" android:label="FileWeave audio player isolated checks" />
+    <instrumentation android:name="me.zhanghai.android.files.diagnostics.LanShareDesignInstrumentation"
+        android:targetPackage="${applicationId}" android:label="FileWeave isolated LAN visual check" />
+    <instrumentation android:name="me.zhanghai.android.files.diagnostics.MenuPanelInstrumentation"
+        android:targetPackage="${applicationId}" android:label="FileWeave isolated menu navigation checks" />
+    <instrumentation android:name="me.zhanghai.android.files.diagnostics.RedesignInstrumentation"
+        android:targetPackage="${applicationId}" android:label="FileWeave isolated Compose navigation checks" />
+    <instrumentation android:name="me.zhanghai.android.files.diagnostics.DensityInstrumentation" android:targetPackage="${applicationId}" android:label="FileWeave isolated layout checks" />
+    <instrumentation android:name="me.zhanghai.android.files.diagnostics.ClipboardFocusInstrumentation" android:targetPackage="${applicationId}" android:label="FileWeave foreground clipboard check" />
+    <instrumentation android:name="me.zhanghai.android.files.diagnostics.RecentTrashAuditInstrumentation" android:targetPackage="${applicationId}" android:label="FileWeave read-only recent trash audit" />
+    <instrumentation android:name="me.zhanghai.android.files.diagnostics.HistoryDeletionInstrumentation" android:targetPackage="${applicationId}" android:label="FileWeave isolated history deletion check" />
     <application>
+        <activity android:name="me.zhanghai.android.files.diagnostics.HistoryDeletionProbeActivity" android:exported="false" />
+        <activity android:name="me.zhanghai.android.files.diagnostics.ClipboardProbeActivity" android:exported="false" />
+        <activity android:name="me.zhanghai.android.files.diagnostics.RedesignPreviewActivity" android:exported="false" />
+        <activity android:name="me.zhanghai.android.files.diagnostics.LanShareDesignActivity" android:exported="false" />
         <receiver android:name="me.zhanghai.android.files.diagnostics.ShareCheckReceiver" android:exported="true" android:permission="android.permission.DUMP" />
     </application>
 </manifest>

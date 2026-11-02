@@ -48,6 +48,7 @@ class BreadcrumbLayout : HorizontalScrollView {
     private var isLayoutDirty = true
     private var isScrollToSelectedItemPending = false
     private var isFirstScroll = true
+    private var lastAvailableWidth = -1
 
     constructor(context: Context) : super(context)
 
@@ -99,6 +100,19 @@ class BreadcrumbLayout : HorizontalScrollView {
         } else {
             heightMeasureSpec
         }
+        val availableWidth = MeasureSpec.getSize(widthMeasureSpec)
+        if (availableWidth != lastAvailableWidth) {
+            lastAvailableWidth = availableWidth
+            // Keep the current location readable rather than horizontally clipping a long name.
+            // Re-anchor after resizing even if setData received an unchanged breadcrumb.
+            val textWidth = (availableWidth - 48 * resources.displayMetrics.density).toInt().coerceAtLeast(1)
+            for (index in 0 until itemsLayout.childCount) {
+                @Suppress("UNCHECKED_CAST")
+                val binding = (itemsLayout.getChildAt(index).tag as Pair<BreadcrumbItemBinding, PopupMenu>).first
+                binding.text.maxWidth = textWidth
+            }
+            if (this::data.isInitialized) isScrollToSelectedItemPending = true
+        }
         super.onMeasure(widthMeasureSpec, newHeightMeasureSpec)
     }
 
@@ -128,6 +142,7 @@ class BreadcrumbLayout : HorizontalScrollView {
         }
         this.data = data
         inflateItemViews()
+        lastAvailableWidth = -1
         bindItemViews()
         scrollToSelectedItem()
     }
@@ -188,6 +203,7 @@ class BreadcrumbLayout : HorizontalScrollView {
             binding.arrowImage.isVisible = index != data.paths.size - 1
             binding.root.isActivated = index == data.selectedIndex
             val path = data.paths[index]
+            binding.root.contentDescription = path.toUserFriendlyString()
             binding.root.setOnClickListener {
                 if (data.selectedIndex == index) {
                     scrollToSelectedItem()
@@ -197,6 +213,10 @@ class BreadcrumbLayout : HorizontalScrollView {
             }
             menu.setOnMenuItemClickListener {
                 when (it.itemId) {
+                    R.id.action_navigate_to -> {
+                        listener.showPath(path)
+                        true
+                    }
                     R.id.action_copy_path -> {
                         listener.copyPath(path)
                         true
@@ -213,6 +233,7 @@ class BreadcrumbLayout : HorizontalScrollView {
 
     interface Listener {
         fun navigateTo(path: Path)
+        fun showPath(path: Path)
         fun copyPath(path: Path)
         fun openInNewTask(path: Path)
     }

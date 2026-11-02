@@ -11,16 +11,27 @@ import me.zhanghai.android.files.provider.common.newDirectoryStream
 import me.zhanghai.android.files.provider.common.newInputStream
 
 /** Virtual root contains only explicit selections; symbolic links never expand the scope. */
-class LanShareBackend(paths: List<Path>, rootLabel: String? = null) : LanShareKernel.Backend {
+class LanShareBackend(
+    paths: List<Path>,
+    private val rootLabel: String? = null,
+    private val flattenSingleRoot: Boolean = false,
+    excludedPaths: List<Path> = emptyList()
+) : LanShareKernel.Backend {
+    private val pathPolicy = LanSharePathPolicy(excludedPaths.filter { it.isLinuxPath }.map { canonical(it).toString() })
+    private fun isExcluded(path: Path) = path.isLinuxPath && pathPolicy.excludes(path.toString())
     private val roots = linkedMapOf<String, Path>().apply {
         paths.distinct().forEach { path ->
             val canonical = canonical(path)
+            require(!isExcluded(canonical)) { "Private app storage is not shared" }
             val name = rootLabel ?: path.fileName?.toString() ?: "Storage"
             var unique = name
             var index = 2
             while (containsKey(unique)) unique = "$name (${index++})"
             put(unique, canonical)
         }
+    }
+    init {
+        require(!flattenSingleRoot || roots.size == 1)
     }
     private fun canonical(path: Path): Path = if (path.isLinuxPath) {
         // LinuxPath deliberately has no toRealPath implementation; canonicalFile resolves
@@ -29,17 +40,27 @@ class LanShareBackend(paths: List<Path>, rootLabel: String? = null) : LanShareKe
     } else path.normalize()
 
     private fun resolve(parts: List<String>): Path {
-        require(parts.isNotEmpty())
-        val root = roots[parts.first()] ?: throw java.io.FileNotFoundException()
+        LanSharePathPolicy.requireComponents(parts)
+        val root: Path
+        val descendants: List<String>
+        if (flattenSingleRoot) {
+            root = roots.values.single()
+            descendants = parts
+        } else {
+            require(parts.isNotEmpty())
+            root = roots[parts.first()] ?: throw java.io.FileNotFoundException()
+            descendants = parts.drop(1)
+        }
         var path = root
-        for (part in parts.drop(1)) {
-            require(part.isNotEmpty() && part != "." && part != ".." && '/' !in part && '\\' !in part && '\u0000' !in part)
+        for (part in descendants) {
             path = path.resolve(part)
+            require(!isExcluded(path)) { "Private app storage is not shared" }
             require(!(if (path.isLinuxPath) android.system.OsConstants.S_ISLNK(android.system.Os.lstat(path.toString()).st_mode)
                 else Files.isSymbolicLink(path))) { "Symbolic links are not shared" }
         }
         val real = canonical(path)
         require(real.startsWith(root)) { "Outside shared selection" }
+        require(!isExcluded(real)) { "Private app storage is not shared" }
         return real
     }
     private fun entry(path: Path, name: String): LanShareKernel.Entry {
@@ -53,11 +74,17 @@ class LanShareBackend(paths: List<Path>, rootLabel: String? = null) : LanShareKe
         require(attr.isDirectory || attr.isRegularFile)
         return LanShareKernel.Entry(name, attr.isDirectory, if (attr.isDirectory) 0 else attr.size())
     }
-    override fun stat(path: List<String>): LanShareKernel.Entry? = if (path.isEmpty()) {
-        LanShareKernel.Entry("共享文件 / Shared files", true, 0)
-    } else try { entry(resolve(path), path.last()) } catch (_: Exception) { null }
+    override fun stat(path: List<String>): LanShareKernel.Entry? = if (path.isEmpty() && !flattenSingleRoot) {
+        LanShareKernel.Entry("Shared files", true, 0, rootTitle = LanShareKernel.RootTitle.SHARED_FILES)
+    } else try {
+        entry(resolve(path), path.lastOrNull() ?: rootLabel ?: "Phone storage").let {
+            if (flattenSingleRoot && path.isEmpty() && rootLabel != null) {
+                it.copy(rootTitle = LanShareKernel.RootTitle.PHONE_STORAGE)
+            } else it
+        }
+    } catch (_: Exception) { null }
     override fun list(path: List<String>): List<LanShareKernel.Entry> {
-        if (path.isEmpty()) return roots.mapNotNull { (name, _) -> stat(listOf(name)) }
+        if (path.isEmpty() && !flattenSingleRoot) return roots.mapNotNull { (name, _) -> stat(listOf(name)) }
         val directory = resolve(path)
         if (directory.isLinuxPath) {
             return (directory.toFile().listFiles() ?: throw java.io.IOException("Directory unavailable"))

@@ -41,7 +41,7 @@ object PairedShares {
     }
     fun backend(selected: Boolean): LanShareKernel.Backend? {
         val delegate = if (selected) selection else if (files) {
-            LanShareBackend(listOf(Paths.get(android.os.Environment.getExternalStorageDirectory().absolutePath)), "手机存储")
+            LanShareBackend(listOf(Paths.get(android.os.Environment.getExternalStorageDirectory().absolutePath)), "Phone storage")
         } else null
         delegate ?: return null
         return object : LanShareKernel.Backend {

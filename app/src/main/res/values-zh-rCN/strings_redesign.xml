@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fw_redesign_files">文件</string>
+    <string name="fw_redesign_devices">设备</string>
+    <string name="fw_redesign_transfers">传输</string>
+    <string name="fw_redesign_back">返回</string>
+    <string name="fw_redesign_tools">工具</string>
+    <string name="fw_redesign_nearby">你的设备</string>
+    <string name="fw_redesign_mac">Mac 连接</string>
+    <string name="fw_redesign_device_hint">在 Mac 上打开 FileWeave，并将两台设备连接到同一网络。</string>
+    <string name="fw_redesign_sharing">与设备共享</string>
+    <string name="fw_redesign_transfer_empty">暂无传输</string>
+    <string name="fw_redesign_transfer_hint">与 Mac 交换文件或剪贴板后，完成记录会显示在这里。</string>
+    <string name="fw_redesign_file_empty">暂无共享文件</string>
+    <string name="fw_redesign_file_hint">已连接 Mac 共享的文件会显示在这里。</string>
+    <string name="fw_redesign_vault_hint">导入文件，在保险库内保留加密副本。</string>
+    <string name="fw_redesign_clipboard_preview">来自 Mac</string>
+    <string name="fw_redesign_clipboard_empty">尚未收到文本</string>
+    <string name="fw_redesign_clipboard_hint">接收 Mac 的文本，或发送当前手机剪贴板中的文本。</string>
+    <string name="fw_redesign_all_history">查看传输记录</string>
+    <string name="fw_redesign_vault_files">已加密文件</string>
+    <string name="fw_redesign_file_actions">文件操作</string>
+    <string name="fw_redesign_loading">正在读取文件…</string>
+    <string name="fw_redesign_history_file_sent">已发送至 Mac</string>
+    <string name="fw_redesign_history_file_received">已下载到手机</string>
+    <string name="fw_redesign_history_text_sent">文本已发送至 Mac</string>
+    <string name="fw_redesign_history_text_received">已接收 Mac 文本</string>
+    <string name="fw_redesign_history_filter_all">全部</string>
+    <string name="fw_redesign_history_filter_files">文件</string>
+    <string name="fw_redesign_history_filter_text">剪贴板</string>
+    <string name="fw_redesign_busy_hint">操作完成前请保持此页面打开。</string>
+    <string name="fw_redesign_history_scope">与 Mac 之间已完成的传输记录</string>
+    <string name="fw_redesign_transcript_hint">录音保存的转录文本会显示在这里。</string>
+    <string name="fw_redesign_vault_security">保险库安全</string>
+    <string name="fw_redesign_vault_unlocked">已解锁</string>
+    <string name="fw_redesign_vault_lock_hint">离开此页面时自动锁定</string>
+    <string name="fw_redesign_phone_sharing">手机共享</string>
+    <string name="fw_internal_storage">内部存储</string>
+</resources>

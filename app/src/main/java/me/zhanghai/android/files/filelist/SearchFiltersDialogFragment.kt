@@ -25,7 +25,12 @@ class SearchFiltersDialogFragment : DialogFragment() {
         start = state.getString("start")?.let(LocalDate::parse) ?: LocalDate.now()
         end = state.getString("end")?.let(LocalDate::parse) ?: start
         binding.typeSpinner.setSelection(state.getInt("type"))
-        binding.extensionEdit.setText(state.getString("extension", ""))
+        binding.extensionEdit.setAdapter(android.widget.ArrayAdapter(requireContext(),
+            android.R.layout.simple_dropdown_item_1line,
+            listOf("jpg", "png", "gif", "webp", "mp4", "mkv", "mp3", "pdf", "zip", "md")))
+        binding.extensionEdit.threshold = 0
+        binding.extensionEdit.setOnClickListener { binding.extensionEdit.showDropDown() }
+        binding.extensionEdit.setText(state.getString("extension", ""), false)
         binding.recursiveCheck.isChecked = state.getBoolean("recursive", true)
         binding.dateFieldSpinner.setSelection(state.getInt("field"))
         binding.dateRangeSpinner.setSelection(state.getInt("preset"))
@@ -38,6 +43,7 @@ class SearchFiltersDialogFragment : DialogFragment() {
         binding.dateRangeSpinner.onItemSelectedListener = changed
         binding.startDateButton.setOnClickListener { pickDate(start) { start = it; updateFields() } }
         binding.endDateButton.setOnClickListener { pickDate(end) { end = it; updateFields() } }
+        binding.recursiveCheck.isVisible = !requireArguments().getBoolean("recent")
         updateFields()
         val dialog = MaterialAlertDialogBuilder(requireContext())
             .setTitle(R.string.fw_search_filters).setView(binding.root)
@@ -103,8 +109,9 @@ class SearchFiltersDialogFragment : DialogFragment() {
     }
 
     companion object {
-        fun newInstance(filters: SearchFilters) = SearchFiltersDialogFragment().apply {
+        fun newInstance(filters: SearchFilters, recent: Boolean = false) = SearchFiltersDialogFragment().apply {
             arguments = Bundle().apply {
+                putBoolean("recent", recent)
                 putInt("type", filters.type.ordinal); putString("extension", filters.extension)
                 putBoolean("recursive", filters.recursive); putInt("field", filters.dateField.ordinal)
                 putInt("preset", if (filters.dates == null) 0 else 4)

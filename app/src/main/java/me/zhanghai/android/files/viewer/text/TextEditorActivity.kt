@@ -28,6 +28,8 @@ class TextEditorActivity : AppActivity() {
         }
     }
 
+    companion object { const val EXTRA_PREVIEW = "text_preview" }
+
     override fun onSupportNavigateUp(): Boolean {
         if (fragment.onSupportNavigateUp()) {
             return true

@@ -24,6 +24,13 @@ class VideoGestureLayout @JvmOverloads constructor(context: Context, attrs: Attr
     var listener: Listener? = null
     // Controls keep their taps; their horizontal/vertical drags still participate in gestures.
     var isControlHit: ((MotionEvent) -> Boolean)? = null
+    var controlsLocked = false
+        set(value) {
+            if (field == value) return
+            cancelGesture()
+            cancelPendingTap()
+            field = value
+        }
     private val slop = ViewConfiguration.get(context).scaledTouchSlop
     private var downX = 0f
     private var downY = 0f
@@ -34,7 +41,7 @@ class VideoGestureLayout @JvmOverloads constructor(context: Context, attrs: Attr
         override fun onDown(e: MotionEvent) = true
         override fun onSingleTapConfirmed(e: MotionEvent): Boolean { performClick(); return true }
         override fun onDoubleTap(e: MotionEvent): Boolean {
-            listener?.onDoubleTap(e.x >= width / 2f)
+            if (controlsLocked) listener?.onTap() else listener?.onDoubleTap(e.x >= width / 2f)
             return true
         }
     }).apply { setIsLongpressEnabled(false) }
@@ -43,7 +50,7 @@ class VideoGestureLayout @JvmOverloads constructor(context: Context, attrs: Attr
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             cancelGesture()
             downX = event.x; downY = event.y; multiTouch = false
-            listener?.onDown()
+            if (!controlsLocked) listener?.onDown()
             ownsTap = isControlHit?.invoke(event) != true
             return ownsTap
         }
@@ -91,6 +98,7 @@ class VideoGestureLayout @JvmOverloads constructor(context: Context, attrs: Attr
     }
 
     private fun beginOrMove(event: MotionEvent): Boolean {
+        if (controlsLocked) return false
         if (kind == null) {
             val dx = event.x - downX
             val dy = event.y - downY
@@ -117,6 +125,20 @@ class VideoGestureLayout @JvmOverloads constructor(context: Context, attrs: Attr
     fun cancelGesture() {
         kind?.let { kind = null; listener?.onEnd(it, false) }
         parent?.requestDisallowInterceptTouchEvent(false)
+    }
+
+    fun cancelPendingTap() {
+        val now = android.os.SystemClock.uptimeMillis()
+        MotionEvent.obtain(now, now, MotionEvent.ACTION_CANCEL, 0f, 0f, 0).let {
+            taps.onTouchEvent(it)
+            it.recycle()
+        }
+    }
+
+    override fun onDetachedFromWindow() {
+        cancelGesture()
+        cancelPendingTap()
+        super.onDetachedFromWindow()
     }
 
     override fun performClick(): Boolean {

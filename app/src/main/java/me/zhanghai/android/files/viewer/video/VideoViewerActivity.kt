@@ -40,6 +40,9 @@ open class VideoViewerActivity : AppActivity() {
     private lateinit var retryView: Button
     private var path: Path? = null
     private var subtitleUri: Uri? = null
+    private var repeatVideo = false
+    private var controlsLocked = false
+    private var clearPlaybackFeedback: (() -> Unit)? = null
     private var position = 0L
     private var shouldPlay = true
     private val positions by lazy { getSharedPreferences("video_positions", MODE_PRIVATE) }
@@ -66,6 +69,8 @@ open class VideoViewerActivity : AppActivity() {
             if (!me.zhanghai.android.files.vault.VaultSession.isOpen() || me.zhanghai.android.files.vault.VaultSession.generation() != vaultGeneration) { finish(); return }
         }
         position = savedInstanceState?.getLong("position") ?: if (vaultPath == null) positions.getLong(positionKey, 0) else 0
+        repeatVideo = savedInstanceState?.getBoolean("repeat_video") ?: false
+        controlsLocked = savedInstanceState?.getBoolean("controls_locked") ?: false
         shouldPlay = savedInstanceState?.getBoolean("playing") ?: true
         subtitleUri = savedInstanceState?.getString("subtitle")?.let(Uri::parse)
         setContentView(R.layout.video_viewer_activity)
@@ -80,7 +85,17 @@ open class VideoViewerActivity : AppActivity() {
             setNavigationOnClickListener { finish() }
         }
         playerView = findViewById(R.id.video_player)
+        val feedback = findViewById<View>(R.id.video_feedback)
         val preview = findViewById<TextView>(R.id.video_seek_preview)
+        val deltaView = findViewById<TextView>(R.id.video_seek_delta)
+        val durationView = findViewById<TextView>(R.id.video_seek_duration)
+        val progress = findViewById<android.widget.ProgressBar>(R.id.video_feedback_progress)
+        val unlock = findViewById<View>(R.id.video_unlock)
+        val hideUnlock = Runnable { unlock.visibility = View.GONE }
+        val unlockOnBack = object : androidx.activity.OnBackPressedCallback(controlsLocked) {
+            override fun handleOnBackPressed() { unlock.performClick() }
+        }
+        onBackPressedDispatcher.addCallback(this, unlockOnBack)
         val audio = getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
         volumeControlStream = android.media.AudioManager.STREAM_MUSIC
         val stream = android.media.AudioManager.STREAM_MUSIC
@@ -92,19 +107,50 @@ open class VideoViewerActivity : AppActivity() {
         var startBrightness = .5f
         var startVolume = 0
         var maxVolume = 1
-        val dismissFeedback = Runnable { preview.visibility = View.GONE }
-        fun showFeedback(text: String) {
-            preview.removeCallbacks(dismissFeedback)
+        val dismissFeedback = Runnable { feedback.visibility = View.GONE }
+        fun showFeedback(text: String, fraction: Float, detail: String = "", duration: String = "") {
+            feedback.removeCallbacks(dismissFeedback)
             preview.text = text
-            preview.visibility = View.VISIBLE
+            deltaView.text = detail
+            durationView.text = duration
+            progress.progress = (fraction.coerceIn(0f, 1f) * progress.max).toInt()
+            feedback.visibility = View.VISIBLE
+        }
+        fun showSeekFeedback(target: Long, duration: Long, delta: Long) {
+            showFeedback(formatTime(target), target.toFloat() / duration.coerceAtLeast(1),
+                "${if (delta >= 0) "+" else "−"}${formatTime(kotlin.math.abs(delta))}", formatTime(duration))
+        }
+        clearPlaybackFeedback = {
+            feedback.removeCallbacks(dismissFeedback)
+            dismissFeedback.run()
+            unlock.removeCallbacks(hideUnlock)
+            hideUnlock.run()
         }
         fun hideChrome() {
             playerView.hideController()
             toolbar.visibility = View.GONE
             systemUi.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
         }
+        fun applyControlLock(locked: Boolean, reveal: Boolean) {
+            controlsLocked = locked
+            gestures.controlsLocked = locked
+            unlockOnBack.isEnabled = locked
+            clearPlaybackFeedback?.invoke()
+            playerView.useController = !locked
+            playerView.importantForAccessibility = if (locked) View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS else View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+            if (locked) {
+                hideChrome()
+                if (reveal) {
+                    unlock.visibility = View.VISIBLE
+                    unlock.postDelayed(hideUnlock, 2500)
+                }
+            } else if (reveal) playerView.showController()
+        }
+        playerView.findViewById<View>(R.id.video_lock).setOnClickListener { applyControlLock(true, true) }
+        unlock.setOnClickListener { applyControlLock(false, true) }
         gestures.isControlHit = { event ->
-            gestures.hits(toolbar, event) || gestures.hits(playerView.findViewById(androidx.media3.ui.R.id.exo_bottom_bar), event)
+            if (controlsLocked) gestures.hits(unlock, event)
+            else gestures.hits(toolbar, event) || gestures.hits(playerView.findViewById(androidx.media3.ui.R.id.exo_bottom_bar), event)
         }
         gestures.listener = object : VideoGestureLayout.Listener {
             override fun onDown() {
@@ -129,17 +175,17 @@ open class VideoViewerActivity : AppActivity() {
                 when (kind) {
                     VideoGestureLayout.Kind.SEEK -> {
                         seekTarget = SeekGesture.target(startPosition, seekDuration, dx, 1)
-                        showFeedback(seekFeedback(seekTarget, seekDuration, seekTarget - startPosition))
+                        showSeekFeedback(seekTarget, seekDuration, seekTarget - startPosition)
                     }
                     VideoGestureLayout.Kind.BRIGHTNESS -> {
                         val value = (startBrightness + dy * 2).coerceIn(.01f, 1f)
                         window.attributes = window.attributes.apply { screenBrightness = value }
-                        showFeedback(getString(R.string.fw_video_brightness, kotlin.math.round(value * 100).toInt()))
+                        showFeedback(getString(R.string.fw_video_brightness, kotlin.math.round(value * 100).toInt()), value)
                     }
                     VideoGestureLayout.Kind.VOLUME -> {
                         val value = kotlin.math.round(startVolume + dy * 2 * maxVolume).toInt().coerceIn(0, maxVolume)
                         try { audio.setStreamVolume(stream, value, 0) } catch (_: SecurityException) { }
-                        showFeedback(getString(R.string.fw_video_volume, audio.getStreamVolume(stream) * 100 / maxVolume))
+                        showFeedback(getString(R.string.fw_video_volume, audio.getStreamVolume(stream) * 100 / maxVolume), audio.getStreamVolume(stream).toFloat() / maxVolume)
                     }
                 }
             }
@@ -157,30 +203,44 @@ open class VideoViewerActivity : AppActivity() {
                     }
                 }
                 hideChrome()
-                if (commit) preview.postDelayed(dismissFeedback, 500) else dismissFeedback.run()
+                if (commit) feedback.postDelayed(dismissFeedback, 500) else dismissFeedback.run()
             }
             override fun onTap() {
                 dismissFeedback.run()
-                if (playerView.isControllerFullyVisible) playerView.hideController() else playerView.showController()
+                if (controlsLocked) {
+                    unlock.removeCallbacks(hideUnlock)
+                    unlock.visibility = if (unlock.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+                    if (unlock.visibility == View.VISIBLE) unlock.postDelayed(hideUnlock, 2500)
+                } else if (playerView.isControllerFullyVisible) playerView.hideController() else playerView.showController()
             }
             override fun onDoubleTap(right: Boolean) {
+                if (controlsLocked) return
                 val p = player ?: return
                 if (!p.isCurrentMediaItemSeekable || p.duration <= 0) return
                 val start = p.currentPosition
                 val target = (start + if (right) 10000 else -10000).coerceIn(0, p.duration)
                 p.seekTo(target)
                 hideChrome()
-                showFeedback(seekFeedback(target, p.duration, target - start))
-                preview.postDelayed(dismissFeedback, 650)
+                showSeekFeedback(target, p.duration, target - start)
+                feedback.postDelayed(dismissFeedback, 650)
             }
         }
         playerView.setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { visibility ->
-            toolbar.visibility = visibility
+            toolbar.visibility = if (controlsLocked) View.GONE else visibility
         })
+        applyControlLock(controlsLocked, false)
         playerView.hideController()
         androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
             val safe = insets.getInsetsIgnoringVisibility(androidx.core.view.WindowInsetsCompat.Type.systemBars() or androidx.core.view.WindowInsetsCompat.Type.displayCutout())
             toolbar.setPadding(safe.left, safe.top, safe.right, 0)
+            val gap = (16 * resources.displayMetrics.density).toInt()
+            feedback.layoutParams = (feedback.layoutParams as android.widget.FrameLayout.LayoutParams).apply {
+                leftMargin = safe.left + gap; rightMargin = safe.right + gap; bottomMargin = safe.bottom + gap
+            }
+            unlock.layoutParams = (unlock.layoutParams as android.widget.FrameLayout.LayoutParams).apply {
+                rightMargin = safe.right + (12 * resources.displayMetrics.density).toInt()
+                bottomMargin = safe.bottom + (8 * resources.displayMetrics.density).toInt()
+            }
             playerView.findViewById<View>(androidx.media3.ui.R.id.exo_controller)
                 ?.setPadding(safe.left, safe.top, safe.right, safe.bottom)
             insets
@@ -206,11 +266,18 @@ open class VideoViewerActivity : AppActivity() {
                 true
             }
         }
+        toolbar.menu.add(R.string.fw_video_repeat).apply {
+            isCheckable = true
+            isChecked = repeatVideo
+            setOnMenuItemClickListener {
+                isChecked = !isChecked
+                repeatVideo = isChecked
+                player?.repeatMode = if (isChecked) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+                true
+            }
+        }
         toolbar.overflowIcon?.setTint(android.graphics.Color.WHITE)
     }
-
-    private fun seekFeedback(target: Long, duration: Long, delta: Long): String =
-        "${formatTime(target)} / ${formatTime(duration)}\n${if (delta >= 0) "+" else "−"}${formatTime(kotlin.math.abs(delta))}"
 
     private fun formatTime(milliseconds: Long): String {
         val seconds = milliseconds / 1000
@@ -263,6 +330,7 @@ open class VideoViewerActivity : AppActivity() {
                 .setMimeType(mime).setSelectionFlags(C.SELECTION_FLAG_DEFAULT).setLabel(getString(R.string.fw_video_subtitle)).build()))
         }
         player = ExoPlayer.Builder(this).setHandleAudioBecomingNoisy(true).setMediaSourceFactory(DefaultMediaSourceFactory(factory)).build().also { p ->
+            p.repeatMode = if (repeatVideo) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
             playerView.player = p
             p.setAudioAttributes(androidx.media3.common.AudioAttributes.DEFAULT, true)
             p.addListener(object : Player.Listener {
@@ -283,7 +351,8 @@ open class VideoViewerActivity : AppActivity() {
     }
 
     private fun saveAndRelease() {
-        if (::gestures.isInitialized) gestures.cancelGesture()
+        if (::gestures.isInitialized) { gestures.cancelGesture(); gestures.cancelPendingTap() }
+        clearPlaybackFeedback?.invoke()
         player?.let { p ->
             position = if (p.playbackState == Player.STATE_ENDED) 0 else p.currentPosition.coerceAtLeast(0)
             shouldPlay = p.playWhenReady
@@ -302,6 +371,8 @@ open class VideoViewerActivity : AppActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         if (::gestures.isInitialized) gestures.cancelGesture()
+        outState.putBoolean("repeat_video", repeatVideo)
+        outState.putBoolean("controls_locked", controlsLocked)
         outState.putLong("position", player?.currentPosition ?: position)
         outState.putBoolean("playing", player?.playWhenReady ?: shouldPlay)
         outState.putString("subtitle", subtitleUri?.toString())

@@ -165,6 +165,14 @@ class NavigationListAdapter(
                 ItemHolder(
                     NavigationItemBinding.inflate(parent.context.layoutInflater, parent, false)
                 ).apply {
+                    // Large text gets a full-width title. Keep its secondary controls together
+                    // below the label instead of squeezing words between an icon and two buttons.
+                    val availableWidthDp = parent.width / parent.resources.displayMetrics.density
+                    if (parent.resources.configuration.fontScale >= 1.3f ||
+                        (availableWidthDp > 0 && availableWidthDp < 280)) {
+                        binding.itemLayout.removeView(binding.serverControls)
+                        binding.textLayout.addView(binding.serverControls)
+                    }
                     binding.itemLayout.updatePaddingRelative(
                         viewAttributes.itemHorizontalPadding,
                         viewAttributes.itemVerticalPadding,
@@ -231,8 +239,9 @@ class NavigationListAdapter(
                     return
                 }
                 val checked = item.switchChecked
-                binding.serverSwitch.visibility = if (checked != null) android.view.View.VISIBLE else android.view.View.GONE
-                binding.serverSettings.visibility = binding.serverSwitch.visibility
+                binding.serverControls.visibility = if (checked != null) android.view.View.VISIBLE else android.view.View.GONE
+                binding.serverSwitch.visibility = binding.serverControls.visibility
+                binding.serverSettings.visibility = binding.serverControls.visibility
                 binding.serverSwitch.setOnCheckedChangeListener(null)
                 binding.serverSwitch.isChecked = checked == true
                 binding.serverSwitch.isEnabled = item.switchEnabled

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="fw_file_host" type="id" />
+    <item name="fw_destination_navigation" type="id" />
+    <item name="fw_feature_content" type="id" />
+    <item name="fw_destination_content" type="id" />
+    <item name="fw_picker_filter" type="id" />
+    <item name="fw_picker_view_options" type="id" />
+</resources>

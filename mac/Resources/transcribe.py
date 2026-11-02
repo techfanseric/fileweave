@@ -31,6 +31,13 @@ import sherpa_onnx
 SR = 16000
 
 
+LANGUAGE = "en"
+
+
+def tr(zh, en):
+    return zh if LANGUAGE == "zh-Hans" else en
+
+
 def log(msg):
     print(msg, file=sys.stderr, flush=True)
 
@@ -48,7 +55,7 @@ def read_wav(path):
     import wave
     with wave.open(path, "rb") as f:
         if f.getnchannels() != 1 or f.getsampwidth() != 2 or f.getframerate() != SR:
-            raise RuntimeError("只支持 16kHz 16-bit 单声道 wav")
+            raise RuntimeError(tr("只支持 16kHz 16-bit 单声道 wav", "Only 16 kHz, 16-bit mono WAV is supported"))
         raw = f.readframes(f.getnframes())
         rate = f.getframerate()
     samples = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
@@ -59,19 +66,22 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("audio")
     ap.add_argument("output")
-    ap.add_argument("--speakers", type=int, default=0, help="说话人数，0=自动")
+    ap.add_argument("--speakers", type=int, default=0, help="Speaker count; 0 detects automatically")
     ap.add_argument("--model", default="paraformer", choices=["paraformer", "zipformer"])
+    ap.add_argument("--language", choices=["en", "zh-Hans"], default="en")
     args = ap.parse_args()
+    global LANGUAGE
+    LANGUAGE = args.language
 
     if not os.path.exists(args.audio):
-        log(f"音频不存在: {args.audio}")
+        log(tr(f"音频不存在: {args.audio}", f"Audio file not found: {args.audio}"))
         return 2
 
     started = time.time()
     try:
         samples, rate = read_wav(args.audio)
     except Exception as e:
-        log(f"读取音频失败: {e}")
+        log(tr(f"读取音频失败: {e}", f"Could not read audio: {e}"))
         return 2
     duration = len(samples) / float(rate)
     print(f"META {duration:.1f}", flush=True)
@@ -85,7 +95,7 @@ def main():
     ]
     models_dir = next((d for d in candidates if os.path.isdir(d)), None)
     if not models_dir:
-        log("找不到模型目录")
+        log(tr("找不到模型目录", "Speech model directory not found"))
         return 4
 
     threads = max(2, min(8, os.cpu_count() or 4))
@@ -141,7 +151,7 @@ def main():
         # energy_segments 返回 (起点, 终点)，统一转成 (起点, 时长) 供后面使用
         segments = [(a, b - a) for a, b in energy_segments(samples)]
     except Exception as e:
-        log(f"分段失败，退回整段处理: {e}")
+        log(tr(f"分段失败，退回整段处理: {e}", f"Segmentation failed; processing full audio: {e}"))
         segments = [(0.0, duration)]
 
     # 过长的片段再切一刀，避免单段超过模型上限（Paraformer 约 20s）
@@ -154,7 +164,7 @@ def main():
         if ln > 0.15:
             refined.append((st, ln))
     segments = refined
-    log(f"分段: {len(segments)} 段，耗时 {time.time() - t_vad:.1f}s")
+    log(tr(f"分段: {len(segments)} 段，耗时 {time.time() - t_vad:.1f}s", f"Segmentation: {len(segments)} segments in {time.time() - t_vad:.1f}s"))
 
     # ---------- 2. 语音识别 ----------
     t_asr = time.time()
@@ -179,7 +189,7 @@ def main():
             num_threads=threads, sample_rate=SR, feature_dim=80,
             decoding_method="greedy_search")
         model_name = "Paraformer-zh" + (" int8" if model_file == int8 else "")
-    log(f"ASR 就绪 {time.time() - t_asr:.1f}s（{model_name}，{threads} 线程）")
+    log(tr(f"ASR 就绪 {time.time() - t_asr:.1f}s（{model_name}，{threads} 线程）", f"ASR ready in {time.time() - t_asr:.1f}s ({model_name}, {threads} threads)"))
 
     t_asr2 = time.time()
     MIN_SAMPLES = int(0.60 * SR)   # 低于这个长度一律补静音，避免负特征帧
@@ -203,9 +213,9 @@ def main():
             failed += 1
             texts.append("")
             if failed <= 3:
-                log(f"  片段 {st:.1f}s 解码失败，已跳过: {type(e).__name__}")
+                log(tr(f"  片段 {st:.1f}s 解码失败，已跳过: {type(e).__name__}", f"Segment at {st:.1f}s could not be decoded; skipped: {type(e).__name__}"))
     asr_secs = time.time() - t_asr2
-    log(f"ASR 完成 {len(segments)} 段（失败 {failed}），耗时 {asr_secs:.1f}s"
+    log(f"ASR complete: {len(segments)} segments ({failed} failed), {asr_secs:.1f}s"
         f"（RTF {asr_secs / max(duration, .01):.3f}）")
 
     # ---------- 3. 说话人分离 ----------
@@ -216,7 +226,7 @@ def main():
         required = ["pyannote-segmentation-3-0.onnx",
                     "3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx"]
         if not all(os.path.isfile(os.path.join(spk_dir, name)) for name in required):
-            raise RuntimeError("未安装说话人模型，保留正常文字转录")
+            raise RuntimeError(tr("未安装说话人模型，保留正常文字转录", "Speaker model not installed; text transcription is retained"))
         seg_cfg = sherpa_onnx.OfflineSpeakerSegmentationModelConfig(
             pyannote=sherpa_onnx.OfflineSpeakerSegmentationPyannoteModelConfig(
                 model=os.path.join(spk_dir, "pyannote-segmentation-3-0.onnx")
@@ -243,10 +253,10 @@ def main():
         # sort_by_start_time() 是方法，返回按时间排好的 segment 列表
         for t in result.sort_by_start_time():
             spk_turns.append((t.start, t.end, t.speaker))
-        log(f"说话人分离: {len(spk_turns)} 段 / {result.num_speakers} 人，"
-            f"耗时 {time.time() - t_spk:.1f}s")
+        log(tr(f"说话人分离: {len(spk_turns)} 段 / {result.num_speakers} 人，耗时 {time.time() - t_spk:.1f}s",
+               f"Speakers: {len(spk_turns)} segments / {result.num_speakers} speakers in {time.time() - t_spk:.1f}s"))
     except Exception as e:
-        log(f"说话人分离不可用（将只输出文字与时间戳）: {e}")
+        log(tr(f"说话人分离不可用（将只输出文字与时间戳）: {e}", f"Speaker separation unavailable; keeping text and timestamps: {e}"))
 
     # ---------- 4. 合并：按时间重叠把说话人贴回每段 ----------
     sentences = []
@@ -270,7 +280,7 @@ def main():
         })
 
     if not sentences:
-        log("没有识别到任何语音内容")
+        log(tr("没有识别到任何语音内容", "No speech was recognized"))
         return 7
 
     for s in sentences:
@@ -303,10 +313,20 @@ def main():
         "─" * 48,
         "",
     ]
+    if LANGUAGE != "zh-Hans":
+        lines = [
+            f"File: {os.path.basename(args.audio)}",
+            f"Duration: {dur}",
+            f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            f"Model: {model_name} + energy segmentation + CAM++ speaker separation",
+            f"Sentences: {len(sentences)}" + (f", speakers: {spk_count}" if spk_count else ", speakers not separated"),
+            f"Processing: ASR {asr_secs:.1f}s, speakers {time.time() - t_spk:.1f}s, total {time.time() - started:.1f}s",
+            "", "─" * 48, "",
+        ]
     for s in sentences:
         head = f"[{fmt_ts(s['start'])} → {fmt_ts(s['end'])}]"
         if s["spk"]:
-            lines.append(f"{head} 说话人 {s['spk']}")
+            lines.append(tr(f"{head} 说话人 {s['spk']}", f"{head} Speaker {s['spk']}"))
         else:
             lines.append(head)
         lines.append(s["text"])
@@ -331,7 +351,7 @@ def main():
             "sentences": sentences,
         }, f, ensure_ascii=False, indent=2)
 
-    log(f"完成：{len(sentences)} 句，{spk_count} 个说话人")
+    log(tr(f"完成：{len(sentences)} 句，{spk_count} 个说话人", f"Complete: {len(sentences)} sentences, {spk_count} speakers"))
     return 0
 
 

@@ -8,6 +8,8 @@ package me.zhanghai.android.files.filelist
 import android.app.Activity
 import android.content.ClipData
 import android.content.Context
+import me.zhanghai.android.files.ui.ActionPanel
+import me.zhanghai.android.files.ui.ViewOptionsDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -45,6 +47,7 @@ import androidx.drawerlayout.widget.DrawerLayout
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.commit
 import androidx.lifecycle.LifecycleOwner
+import androidx.recyclerview.widget.ConcatAdapter
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
@@ -95,7 +98,7 @@ import me.zhanghai.android.files.ui.PersistentBarLayoutToolbarActionMode
 import me.zhanghai.android.files.ui.PersistentDrawerLayout
 import me.zhanghai.android.files.ui.ScrollingViewOnApplyWindowInsetsListener
 import me.zhanghai.android.files.ui.SpeedDialViewOnBackPressedCallback
-import me.zhanghai.android.files.ui.ThemedFastScroller
+import me.zhanghai.android.fastscroll.FastScrollerBuilder
 import me.zhanghai.android.files.ui.ToolbarActionMode
 import me.zhanghai.android.files.util.DebouncedRunnable
 import me.zhanghai.android.files.util.Failure
@@ -116,7 +119,6 @@ import me.zhanghai.android.files.util.createManageAppAllFilesAccessPermissionInt
 import me.zhanghai.android.files.util.createSendStreamIntent
 import me.zhanghai.android.files.util.createViewIntent
 import me.zhanghai.android.files.util.extraPath
-import me.zhanghai.android.files.util.extraPathList
 import me.zhanghai.android.files.util.extraPathList
 import me.zhanghai.android.files.util.fadeToVisibilityUnsafe
 import me.zhanghai.android.files.util.getQuantityString
@@ -165,6 +167,8 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
 
     private val args by args<Args>()
     private val argsPath by lazy { args.intent.extraPath }
+    private val startsAtHome: Boolean
+        get() = argsPath == null && args.intent.action in listOf(null, Intent.ACTION_MAIN)
 
     private val viewModel by viewModels { { FileListViewModel() } }
 
@@ -184,15 +188,13 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
     private lateinit var layoutManager: GridLayoutManager
 
     private lateinit var adapter: FileListAdapter
+    private lateinit var recentFooterAdapter: RecentFilesFooterAdapter
 
     private val debouncedSearchRunnable = DebouncedRunnable(Handler(Looper.getMainLooper()), 1000) {
         if (!isResumed || !viewModel.isSearchViewExpanded) {
             return@DebouncedRunnable
         }
         val query = viewModel.searchViewQuery
-        if (query.isEmpty()) {
-            return@DebouncedRunnable
-        }
         viewModel.search(query)
     }
 
@@ -211,6 +213,7 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
             .also { binding = it }
             .root
 
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         super.onActivityCreated(savedInstanceState)
 
@@ -240,6 +243,9 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         }
         binding.appBarLayout.syncBackgroundColorTo(binding.overlayToolbar)
         binding.breadcrumbLayout.setListener(this)
+        binding.toolbar.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            updateToolbarActions()
+        }
         if (!(activity.hasSw600Dp && activity.isOrientationLandscape)) {
             binding.swipeRefreshLayout.setProgressViewEndTarget(
                 true, binding.swipeRefreshLayout.progressViewEndOffset
@@ -248,8 +254,14 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         binding.swipeRefreshLayout.setOnRefreshListener { this.refresh() }
         layoutManager = GridLayoutManager(activity, 1)
         binding.recyclerView.layoutManager = layoutManager
+        me.zhanghai.android.files.viewer.audio.AudioBar(this, binding.root as android.widget.FrameLayout)
         adapter = FileListAdapter(this)
-        binding.recyclerView.adapter = adapter
+        recentFooterAdapter = RecentFilesFooterAdapter { viewModel.loadMoreRecentFiles() }
+        binding.recyclerView.adapter = ConcatAdapter(adapter, recentFooterAdapter)
+        layoutManager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
+            override fun getSpanSize(position: Int): Int =
+                if (position >= adapter.itemCount) layoutManager.spanCount else 1
+        }
         dragSelection = DragSelectTouchListener(binding.recyclerView, adapter::updateDragSelection, adapter::endDragSelection)
         binding.recyclerView.addOnItemTouchListener(dragSelection)
         preview = FileListPreview(FilePreviewPaneBinding.bind(
@@ -263,7 +275,12 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         binding.recyclerView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
             updateSpanCount()
         }
-        val fastScroller = ThemedFastScroller.create(binding.recyclerView)
+        val fastScroller = FastScrollerBuilder(binding.recyclerView)
+            .setPopupTextProvider { view, position ->
+                if (position in 0 until adapter.itemCount) adapter.getPopupText(view, position)
+                else getString(R.string.fw_recent_load_more)
+            }
+            .useMd2Style().build()
         binding.recyclerView.setOnApplyWindowInsetsListener(
             ScrollingViewOnApplyWindowInsetsListener(binding.recyclerView, fastScroller)
         )
@@ -283,13 +300,24 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         addOnBackPressedCallback(
             object : OnBackPressedCallback(false) {
                 override fun handleOnBackPressed() {
-                    viewModel.navigateUp()
+                    if (viewModel.isSearchViewExpanded) {
+                        menuBinding.searchItem.collapseActionView()
+                    } else if (viewModel.isQuickFiltersExpanded) {
+                        viewModel.isQuickFiltersExpanded = false
+                    } else {
+                        navigateUp()
+                    }
                 }
             }
                 .also { callback ->
-                    viewModel.breadcrumbLiveData.observe(viewLifecycleOwner) {
-                        callback.isEnabled = viewModel.canNavigateUpBreadcrumb
+                    fun updateEnabled() {
+                        callback.isEnabled = viewModel.isSearchViewExpanded || viewModel.isQuickFiltersExpanded ||
+                            (!viewModel.isRecentFiles && viewModel.canNavigateUpBreadcrumb)
                     }
+                    viewModel.breadcrumbLiveData.observe(viewLifecycleOwner) { updateEnabled() }
+                    viewModel.recentFilesLiveData.observe(viewLifecycleOwner) { updateEnabled() }
+                    viewModel.searchViewExpandedLiveData.observe(viewLifecycleOwner) { updateEnabled() }
+                    viewModel.quickFiltersExpandedLiveData.observe(viewLifecycleOwner) { updateEnabled() }
                 }
         )
         addOnBackPressedCallback(overlayActionMode.onBackPressedCallback)
@@ -355,11 +383,19 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
                 path = Settings.FILE_LIST_DEFAULT_DIRECTORY.valueCompat
             }
             viewModel.resetTo(path)
+            viewModel.isRecentFiles = startsAtHome
             if (pickOptions != null) {
                 viewModel.pickOptions = pickOptions
             }
         }
+        childFragmentManager.setFragmentResultListener(
+            RecentFilesSettingsDialogFragment.RESULT_KEY, viewLifecycleOwner
+        ) { _, _ -> if (viewModel.isRecentFiles) refresh() }
+        viewModel.recentFilesLiveData.observe(viewLifecycleOwner) { onRecentFilesChanged(it) }
         viewModel.currentPathLiveData.observe(viewLifecycleOwner) { onCurrentPathChanged(it) }
+        setUpQuickFilters()
+        viewModel.searchStateLiveData.observe(viewLifecycleOwner) { updateQuickFilters() }
+        viewModel.quickFiltersExpandedLiveData.observe(viewLifecycleOwner) { updateQuickFilters() }
         viewModel.searchViewExpandedLiveData.observe(viewLifecycleOwner) {
             onSearchViewExpandedChanged(it)
         }
@@ -409,14 +445,60 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         if (!viewModel.isStorageAccessRequested) {
             ensureNotificationPermission()
         }
+        if (viewModel.isRecentFiles) refresh()
     }
 
     override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
         super.onCreateOptionsMenu(menu, inflater)
 
         menuBinding = MenuBinding.inflate(menu, inflater)
-        menuBinding.viewSortItem.subMenu!!.setGroupDividerEnabledCompat(true)
+        menuBinding.menu.findItem(R.id.action_view_model).subMenu!!.setGroupDividerEnabledCompat(true)
         setUpSearchView()
+        updatePickerTools()
+    }
+
+    private fun updatePickerTools() = updateToolbarActions()
+
+    private fun updateToolbarActions() {
+        if (!this::menuBinding.isInitialized) return
+        val toolbar = binding.toolbar
+        val density = resources.displayMetrics.density
+        val widthDp = toolbar.width / density
+        val fontScale = resources.configuration.fontScale
+        val inlineCount = FileToolbarLayout.inlineSecondaryActions(
+            widthDp, fontScale, viewModel.pickOptions != null, viewModel.isSearchViewExpanded
+        )
+        val filtering = menuBinding.menu.findItem(R.id.action_search_filters)
+        val viewing = menuBinding.viewSortItem
+        val filterInline = inlineCount >= 1
+        val viewInline = inlineCount >= 2 && !viewModel.isSearchViewExpanded
+        if (filtering.isVisible != filterInline) filtering.isVisible = filterInline
+        if (viewing.isVisible != viewInline) viewing.isVisible = viewInline
+        val model = menuBinding.menu.findItem(R.id.action_page_model).subMenu!!
+        // The collapsed quick-filter entry already leads to the full filter dialog via Format.
+        // Keep one filter entry in More on compact layouts.
+        model.findItem(R.id.action_filter_files).isVisible = filterInline
+        for ((index, pair) in listOf(filtering to R.id.fw_picker_filter,
+            viewing to R.id.fw_picker_view_options).withIndex()) {
+            val (action, id) = pair
+            if (!action.isVisible && model.findItem(id) == null) {
+                model.add(0, id, 5 + index, action.title)
+            } else if (action.isVisible) model.removeItem(id)
+        }
+        // The title and path share the toolbar only outside pickers. Base the reserved space
+        // on the actual visible controls, rather than always subtracting four action cells.
+        val end = ((10 + (2 + (if (filterInline) 1 else 0) +
+            (if (viewInline) 1 else 0)) * 48) * density).toInt()
+        val titles = listOf(binding.breadcrumbLayout, binding.root.findViewById<View>(R.id.recentFilesTitle))
+        for (title in titles) {
+            if (title.parent === toolbar.parent) {
+                val params = title.layoutParams as ViewGroup.MarginLayoutParams
+                if (params.marginEnd != end) {
+                    params.marginEnd = end
+                    title.layoutParams = params
+                }
+            }
+        }
     }
 
     private fun setUpSearchView() {
@@ -424,6 +506,7 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         // MenuItem.OnActionExpandListener.onMenuItemActionExpand() is called before SearchView
         // resets the query.
         searchView.setOnSearchClickListener {
+            viewModel.isQuickFiltersExpanded = false
             viewModel.isSearchViewExpanded = true
             binding.breadcrumbLayout.isVisible = false
             searchView.setQuery(viewModel.searchViewQuery, false)
@@ -435,7 +518,9 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
 
             override fun onMenuItemActionCollapse(item: MenuItem): Boolean {
                 viewModel.isSearchViewExpanded = false
-                viewModel.stopSearching()
+                viewModel.isQuickFiltersExpanded = false
+                debouncedSearchRunnable.cancel()
+                viewModel.clearSearchQuery()
                 updateBreadcrumbVisibility()
                 return true
             }
@@ -465,6 +550,8 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         if (this::menuBinding.isInitialized && menuBinding.searchItem.isActionViewExpanded) {
             menuBinding.searchItem.collapseActionView()
         }
+        debouncedSearchRunnable.cancel()
+        viewModel.stopSearching()
     }
 
     override fun onPrepareOptionsMenu(menu: Menu) {
@@ -473,10 +560,52 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         updateViewSortMenuItems()
         updateSelectAllMenuItem()
         updateShowHiddenFilesMenuItem()
+        val recent = viewModel.isRecentFiles
+        menu.findItem(R.id.action_recent_scope).isVisible = recent
+        menu.findItem(R.id.action_folder_share).isVisible = !recent && viewModel.pickOptions == null
+        menu.findItem(R.id.action_folder_tools).isVisible = !recent && viewModel.pickOptions == null
+        menu.findItem(R.id.action_share_mac_dir).isVisible = !currentPath.isArchivePath
+        menuBinding.searchItem.isVisible = true
+        for (id in intArrayOf(R.id.action_navigate_up, R.id.action_new_task,
+            R.id.action_share, R.id.action_lan_share, R.id.action_copy_path,
+            R.id.action_open_in_terminal, R.id.action_add_bookmark, R.id.action_create_shortcut)) {
+            menu.findItem(id).isVisible = !recent
+        }
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+            R.id.action_page_more -> {
+                val path = currentPath
+                ActionPanel(requireContext(), viewLifecycleOwner,
+                    if (viewModel.isRecentFiles) getString(R.string.fw_recent_files) else
+                        me.zhanghai.android.files.navigation.NavigationRootMapLiveData.valueCompat[path]
+                            ?.getName(requireContext()) ?: path.name,
+                    menuBinding.menu.findItem(R.id.action_page_model).subMenu!!,
+                    keepOpen = { it.itemId in setOf(R.id.action_filter_files, R.id.action_navigate_to) },
+                    isValid = { isAdded && currentPath == path }) { onOptionsItemSelected(it) }.show()
+                true
+            }
+            R.id.action_view_sort, R.id.fw_picker_view_options -> {
+                ViewOptionsDialog.show(requireContext(), viewLifecycleOwner,
+                    menuBinding.menu.findItem(R.id.action_view_model).subMenu!!,
+                    viewModel.isRecentFiles) {
+                    onOptionsItemSelected(it)
+                    updateViewSortMenuItems()
+                    updateShowHiddenFilesMenuItem()
+                }
+                true
+            }
+            R.id.action_filter_files -> { showAdvancedSearchFilters(); true }
+            R.id.action_share_mac_dir -> {
+                startActivity(Intent(requireContext(), me.zhanghai.android.files.bridge.BridgeActivity::class.java).apply { extraPath = currentPath })
+                true
+            }
+            R.id.action_recent_scope -> { configureRecentFiles(); true }
+            R.id.action_lan_share_hub -> {
+                startActivity(Intent(requireContext(), me.zhanghai.android.files.lanshare.LanShareActivity::class.java))
+                true
+            }
             android.R.id.home -> {
                 binding.drawerLayout?.openDrawer(GravityCompat.START)
                 if (binding.persistentDrawerLayout != null) {
@@ -490,9 +619,8 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
                 viewModel.viewType = FileViewType.LIST
                 true
             }
-            R.id.action_search_filters -> {
-                SearchFiltersDialogFragment.newInstance(viewModel.searchState.filters)
-                    .show(childFragmentManager, "search_filters")
+            R.id.action_search_filters, R.id.fw_picker_filter -> {
+                viewModel.isQuickFiltersExpanded = !viewModel.isQuickFiltersExpanded
                 true
             }
             R.id.action_view_compact -> {
@@ -604,6 +732,17 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
     }
 
     fun onKeyShortcut(keyCode: Int, event: KeyEvent): Boolean {
+        if (overlayActionMode.isActive && viewModel.pickOptions?.allowMultiple != false &&
+            event.isCtrlPressed && keyCode == KeyEvent.KEYCODE_A) { selectAllFiles(); return true }
+        if (event.isAltPressed && keyCode == KeyEvent.KEYCODE_DPAD_UP) { navigateUp(); return true }
+        if (!overlayActionMode.isActive && !bottomActionMode.isActive && event.isCtrlPressed && requireActivity().currentFocus !is android.widget.EditText) {
+            when (keyCode) {
+                KeyEvent.KEYCODE_L -> { showNavigateToPathDialog(); return true }
+                KeyEvent.KEYCODE_R -> { refresh(); return true }
+                KeyEvent.KEYCODE_A -> { selectAllFiles(); return true }
+                KeyEvent.KEYCODE_H -> { setShowHiddenFiles(!Settings.FILE_LIST_SHOW_HIDDEN_FILES.valueCompat); return true }
+            }
+        }
         if (bottomActionMode.isActive) {
             val menu = bottomActionMode.menu
             menu.setQwertyMode(
@@ -637,23 +776,103 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
     }
 
     private fun onCurrentPathChanged(path: Path) {
+        ActionPanel.dismiss(requireContext())
         preview.clear()
         updateOverlayToolbar()
         updateBottomToolbar()
     }
 
+    private fun setUpQuickFilters() {
+        val types = mapOf(R.id.quickFilterImage to SearchFileType.IMAGE,
+            R.id.quickFilterVideo to SearchFileType.VIDEO, R.id.quickFilterAudio to SearchFileType.AUDIO)
+        types.forEach { (id, type) ->
+            binding.root.findViewById<View>(id).setOnClickListener { applyQuickType(type) }
+        }
+        binding.root.findViewById<View>(R.id.quickFilterAll).setOnClickListener {
+            applySearchFilters(SearchFilters(recursive = viewModel.isRecentFiles ||
+                (viewModel.isSearchViewExpanded && viewModel.searchState.filters.recursive)))
+        }
+        binding.root.findViewById<View>(R.id.quickFilterFormat).setOnClickListener { showQuickFilterMenu() }
+        binding.root.findViewById<com.google.android.material.chip.Chip>(R.id.quickFilterSelected)
+            .setOnCloseIconClickListener { applyQuickType(SearchFileType.ANY) }
+        binding.root.findViewById<com.google.android.material.chip.Chip>(R.id.quickFilterDates).apply {
+            setOnClickListener { isChecked = true; showAdvancedSearchFilters() }
+            setOnCloseIconClickListener { applySearchFilters(viewModel.searchState.filters.copy(dates = null)) }
+        }
+        binding.root.findViewById<View>(R.id.quickFilterScope).setOnClickListener {
+            applySearchFilters(viewModel.searchState.filters.copy(recursive = !viewModel.searchState.filters.recursive))
+        }
+    }
+
+    private fun applyQuickType(type: SearchFileType, extension: String = "") {
+        val state = viewModel.searchState
+        applySearchFilters(state.filters.copy(type = type, extension = extension,
+            recursive = if (!state.isSearching && !viewModel.isRecentFiles && !viewModel.isSearchViewExpanded)
+                false else state.filters.recursive))
+    }
+
+    private fun showQuickFilterMenu() {
+        showAdvancedSearchFilters()
+    }
+
+    private fun showAdvancedSearchFilters() {
+        if (childFragmentManager.findFragmentByTag("search_filters") == null) {
+            SearchFiltersDialogFragment.newInstance(viewModel.searchState.filters, viewModel.isRecentFiles)
+                .show(childFragmentManager, "search_filters")
+        }
+    }
+
+    private fun updateQuickFilters() {
+        val filters = viewModel.searchState.filters
+        val hasFilters = filters.type != SearchFileType.ANY || filters.dates != null
+        binding.root.findViewById<View>(R.id.quickFiltersScroll).isVisible =
+            viewModel.selectedFiles.isEmpty() &&
+                (viewModel.isSearchViewExpanded || viewModel.isQuickFiltersExpanded || hasFilters)
+        fun chip(id: Int) = binding.root.findViewById<com.google.android.material.chip.Chip>(id)
+        chip(R.id.quickFilterAll).isChecked = filters.type == SearchFileType.ANY && filters.dates == null
+        chip(R.id.quickFilterImage).isChecked = filters.type == SearchFileType.IMAGE
+        chip(R.id.quickFilterVideo).isChecked = filters.type == SearchFileType.VIDEO
+        chip(R.id.quickFilterAudio).isChecked = filters.type == SearchFileType.AUDIO
+        chip(R.id.quickFilterSelected).apply {
+            isVisible = filters.type == SearchFileType.EXTENSION || filters.type == SearchFileType.MARKDOWN
+            text = if (filters.type == SearchFileType.MARKDOWN) "Markdown" else filters.extension.uppercase(java.util.Locale.ROOT)
+            isChecked = true
+            setOnClickListener { isChecked = true; showQuickFilterMenu() }
+        }
+        chip(R.id.quickFilterDates).apply {
+            isVisible = filters.dates != null
+            val range = filters.dates
+            text = getString(if (filters.dateField == SearchDateField.CREATED) R.string.fw_filter_created_dates else R.string.fw_filter_modified_dates,
+                listOfNotNull(range?.start?.toString(), range?.end?.toString()).distinct().joinToString(" – "))
+            isChecked = true
+        }
+        chip(R.id.quickFilterScope).apply {
+            isVisible = viewModel.searchState.isSearching && !viewModel.isRecentFiles
+            setText(if (filters.recursive) R.string.fw_filter_recursive else R.string.fw_filter_current_folder)
+            isChecked = filters.recursive
+        }
+    }
+
     fun applySearchFilters(filters: SearchFilters) {
+        ActionPanel.dismiss(requireContext())
         debouncedSearchRunnable.cancel()
         viewModel.setSearchFilters(filters)
+        viewModel.isQuickFiltersExpanded = false
+        // Clicking an already selected checkable chip must keep its visible state in sync.
+        updateQuickFilters()
     }
 
     private fun onSearchViewExpandedChanged(expanded: Boolean) {
+        updateQuickFilters()
         updateViewSortMenuItems()
+        updateBreadcrumbVisibility()
     }
 
     private fun updateBreadcrumbVisibility() {
         binding.breadcrumbLayout.isVisible =
-            binding.toolbar.subtitle == null && !viewModel.isSearchViewExpanded
+            !viewModel.isRecentFiles && binding.toolbar.subtitle == null && !viewModel.isSearchViewExpanded
+        binding.root.findViewById<View>(R.id.recentFilesTitle).isVisible =
+            viewModel.isRecentFiles && binding.toolbar.subtitle == null && !viewModel.isSearchViewExpanded
     }
 
     private fun onFileListChanged(stateful: Stateful<List<FileItem>>) {
@@ -671,7 +890,9 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         }
         updateBreadcrumbVisibility()
         val hasFiles = !files.isNullOrEmpty()
-        binding.swipeRefreshLayout.isRefreshing = stateful is Loading && (hasFiles || isSearching)
+        binding.swipeRefreshLayout.isRefreshing = stateful is Loading &&
+            !viewModel.recentFilesLoadingMore && (hasFiles || isSearching)
+        updateRecentFooter()
         binding.progress.fadeToVisibilityUnsafe(stateful is Loading && !(hasFiles || isSearching))
         binding.errorText.fadeToVisibilityUnsafe(stateful is Failure && !hasFiles)
         val throwable = (stateful as? Failure)?.throwable
@@ -685,8 +906,16 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
             }
         }
         FileEmptyStateBinding.bind(binding.emptyView).apply {
-            stateTitle.setText(if (isSearching) R.string.fw_search_no_results else R.string.file_list_empty)
-            stateHint.setText(if (isSearching) R.string.fw_search_no_results_hint else R.string.fw_directory_empty_hint)
+            stateTitle.setText(when {
+                isSearching -> R.string.fw_search_no_results
+                viewModel.isRecentFiles -> R.string.fw_recent_empty
+                else -> R.string.file_list_empty
+            })
+            stateHint.setText(when {
+                isSearching -> R.string.fw_search_no_results_hint
+                viewModel.isRecentFiles -> R.string.fw_recent_empty_hint
+                else -> R.string.fw_directory_empty_hint
+            })
         }
         binding.emptyView.fadeToVisibilityUnsafe(stateful is Success && !hasFiles)
         if (files != null) {
@@ -696,8 +925,17 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
             adapter.clear()
         }
         if (stateful is Success) {
-            viewModel.pendingState?.let { layoutManager.onRestoreInstanceState(it) }
+            if (!viewModel.isRecentFiles) viewModel.pendingState?.let { layoutManager.onRestoreInstanceState(it) }
         }
+    }
+
+    private fun updateRecentFooter() {
+        recentFooterAdapter.update(
+            viewModel.isRecentFiles && viewModel.recentFilesHasMore,
+            viewModel.recentFilesLoading,
+            viewModel.recentFilesLoadingMore,
+            viewModel.recentFilesLoadMoreFailed
+        )
     }
 
     private fun onViewTypeChanged(viewType: FileViewType) {
@@ -776,8 +1014,9 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
             return
         }
         val searchViewExpanded = viewModel.isSearchViewExpanded
-        menuBinding.menu.findItem(R.id.action_search_filters).isVisible = searchViewExpanded
-        menuBinding.viewSortItem.isVisible = !searchViewExpanded
+        menuBinding.menu.findItem(R.id.action_view_model).subMenu!!.setGroupVisible(R.id.group_sort, !viewModel.isRecentFiles)
+        menuBinding.viewSortPathSpecificItem.isVisible = !viewModel.isRecentFiles
+        updateToolbarActions()
         if (searchViewExpanded) {
             return
         }
@@ -828,7 +1067,12 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
     }
 
     private fun onShowHiddenFilesChanged(showHiddenFiles: Boolean) {
-        updateAdapterFileList()
+        if (viewModel.isRecentFiles) {
+            // Hidden rows must not fill the visible recent page or produce a false footer.
+            viewModel.reload()
+        } else {
+            updateAdapterFileList()
+        }
         updateShowHiddenFilesMenuItem()
     }
 
@@ -837,7 +1081,8 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         if (!Settings.FILE_LIST_SHOW_HIDDEN_FILES.valueCompat) {
             files = files.filterNot { it.isHidden }
         }
-        adapter.replaceListAndIsSearching(files, viewModel.searchState.isSearching)
+        // Type-only filtering keeps normal directory ordering; recent always preserves index order.
+        adapter.replaceListAndIsSearching(files, viewModel.searchState.query.isNotEmpty())
     }
 
     private fun updateShowHiddenFilesMenuItem() {
@@ -867,8 +1112,17 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
 
     override fun navigateTo(path: Path) {
         collapseSearchView()
+        if (viewModel.isRecentFiles) {
+            viewModel.isRecentFiles = false
+            viewModel.resetTo(path)
+            return
+        }
         val state = layoutManager.onSaveInstanceState()
         viewModel.navigateTo(state!!, path)
+    }
+
+    override fun showPath(path: Path) {
+        NavigateToPathDialogFragment.show(path, this)
     }
 
     override fun copyPath(path: Path) {
@@ -883,7 +1137,7 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
 
     private fun onPickOptionsChanged(pickOptions: PickOptions?) {
         val title = if (pickOptions == null) {
-            getString(R.string.file_list_title)
+            getString(if (viewModel.isRecentFiles) R.string.fw_recent_files else R.string.file_list_title)
         } else {
             val count = if (pickOptions.allowMultiple) Int.MAX_VALUE else 1
             when (pickOptions.mode) {
@@ -895,6 +1149,21 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
             }
         }
         requireActivity().title = title
+        binding.toolbar.title = if (pickOptions != null) title else null
+        if (pickOptions != null && binding.breadcrumbLayout.parent !== binding.appBarLayout) {
+            // A picker has a task title as well as a location. Give each a real row rather
+            // than drawing the breadcrumb over “Select a file” in the toolbar title area.
+            (binding.breadcrumbLayout.parent as ViewGroup).removeView(binding.breadcrumbLayout)
+            binding.appBarLayout.addView(binding.breadcrumbLayout, 1,
+                com.google.android.material.appbar.AppBarLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    (48 * resources.displayMetrics.density).toInt()
+                ).apply {
+                    marginStart = (16 * resources.displayMetrics.density).toInt()
+                    marginEnd = marginStart
+                })
+        }
+        updatePickerTools()
         updateSelectAllMenuItem()
         updateOverlayToolbar()
         updateBottomToolbar()
@@ -944,6 +1213,7 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
     }
 
     private fun onSelectedFilesChanged(files: FileItemSet) {
+        updateQuickFilters()
         updateOverlayToolbar()
         adapter.replaceSelectedFiles(files)
     }
@@ -974,6 +1244,7 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
             val menu = overlayActionMode.menu
             val isAnyFileReadOnly = files.any { it.path.fileSystem.isReadOnly }
             menu.findItem(R.id.action_cut).isVisible = !isAnyFileReadOnly
+            menu.findItem(R.id.action_fw_send_mac).isVisible = files.none { it.path.isArchivePath }
             val areAllFilesArchivePaths = files.all { it.path.isArchivePath }
             menu.findItem(R.id.action_copy)
                 .setIcon(
@@ -1016,6 +1287,15 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
 
     private fun onOverlayActionModeMenuItemClicked(item: MenuItem): Boolean =
         when (item.itemId) {
+            R.id.action_selection_more -> {
+                val selected = viewModel.selectedFiles.toSet()
+                ActionPanel(requireContext(), viewLifecycleOwner, overlayActionMode.title ?: "",
+                    overlayActionMode.menu.findItem(R.id.action_selection_model).subMenu!!,
+                    keepOpen = { it.itemId == R.id.action_archive },
+                    isValid = { viewModel.selectedFiles.toSet() == selected }) { onOverlayActionModeMenuItemClicked(it) }.show()
+                true
+            }
+
             R.id.action_open -> {
                 pickFiles(viewModel.selectedFiles)
                 true
@@ -1097,6 +1377,7 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
     }
 
     override fun deleteFiles(files: FileItemSet) {
+        ActionPanel.dismiss(requireContext())
         FileJobService.delete(makePathListForJob(files), requireContext())
         viewModel.selectFiles(files, false)
     }
@@ -1107,6 +1388,7 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
     }
 
     private fun showCreateArchiveDialog(files: FileItemSet) {
+        if (viewModel.isRecentFiles) files.firstOrNull()?.path?.parent?.let { navigateToRoot(it) }
         CreateArchiveDialogFragment.show(files, this)
     }
 
@@ -1117,6 +1399,7 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         filter: Int,
         password: String?
     ) {
+        ActionPanel.dismiss(requireContext())
         val archiveFile = viewModel.currentPath.resolve(name)
         FileJobService.archive(
             makePathListForJob(files), archiveFile, format, filter, password, requireContext()
@@ -1207,7 +1490,7 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
                 .setTitle(
                     if (areAllFilesArchivePaths) R.string.file_list_paste_action_extract_here else R.string.paste
                 )
-                .isEnabled = !isCurrentPathReadOnly
+                .isEnabled = !isCurrentPathReadOnly && !viewModel.isRecentFiles
         }
         if (!bottomActionMode.isActive) {
             bottomActionMode.start(object : ToolbarActionMode.Callback {
@@ -1257,6 +1540,12 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
                         pickPaths(linkedSetOf(path))
                     }
                 }
+                true
+            }
+            R.id.action_lan_share_copied -> {
+                // Use the app's copied/cut file paths, never clipboard text or paste semantics.
+                val paths = viewModel.pasteState.files.map { it.path }
+                if (paths.isNotEmpty()) shareOnLan(paths)
                 true
             }
             R.id.action_paste -> {
@@ -1395,6 +1684,21 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
     private fun openFileWithIntent(file: FileItem, withChooser: Boolean) {
         val path = file.path
         val mimeType = file.mimeType
+        val extension = path.fileName.toString().substringAfterLast('.', "").lowercase()
+        if (!withChooser && !path.isArchivePath && (extension in setOf("txt", "md", "xml", "log", "html", "htm"))) {
+            startActivitySafe(Intent(requireContext(), me.zhanghai.android.files.viewer.text.TextEditorActivity::class.java).apply { extraPath = path; putExtra(me.zhanghai.android.files.viewer.text.TextEditorActivity.EXTRA_PREVIEW, true) })
+            return
+        }
+        if (!withChooser && !path.isArchivePath && (extension == "pdf" || mimeType.value == "application/pdf")) {
+            startActivitySafe(Intent(requireContext(), me.zhanghai.android.files.viewer.document.PdfViewerActivity::class.java).apply { extraPath = path })
+            return
+        }
+        if (!withChooser && !path.isArchivePath && mimeType.type == "audio") {
+            val paths = (0 until adapter.itemCount).map { adapter.getItem(it) }
+                .filter { it.mimeType.type == "audio" && !it.path.isArchivePath }.map { it.path }
+            me.zhanghai.android.files.viewer.audio.AudioPlayback.play(requireContext(), if (path in paths) paths else listOf(path), path)
+            return
+        }
         if (!withChooser && mimeType.type == "video" && !path.isArchivePath) {
             startActivitySafe(Intent(requireContext(), me.zhanghai.android.files.viewer.video.VideoViewerActivity::class.java)
                 .setType(mimeType.value).apply { extraPath = path })
@@ -1479,6 +1783,7 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
     }
 
     override fun renameFile(file: FileItem, newName: String) {
+        ActionPanel.dismiss(requireContext())
         FileJobService.rename(file.path, newName, requireContext())
         viewModel.selectFile(file, false)
     }
@@ -1587,11 +1892,50 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
 
     override fun navigateToRoot(path: Path) {
         collapseSearchView()
+        viewModel.isRecentFiles = false
         viewModel.resetTo(path)
     }
 
     override fun navigateToDefaultRoot() {
         navigateToRoot(Settings.FILE_LIST_DEFAULT_DIRECTORY.valueCompat)
+    }
+
+    override val isRecentFilesAvailable: Boolean get() = viewModel.pickOptions == null
+
+    override val isRecentFiles: Boolean get() = viewModel.isRecentFiles
+
+    override fun navigateToRecentFiles() {
+        if (viewModel.pickOptions != null) return
+        collapseSearchView()
+        viewModel.clearSelectedFiles()
+        viewModel.isRecentFiles = true
+        refresh()
+    }
+
+    override fun configureRecentFiles() {
+        if (childFragmentManager.findFragmentByTag("recent_files_settings") == null) {
+            RecentFilesSettingsDialogFragment().show(childFragmentManager, "recent_files_settings")
+        }
+    }
+
+    override fun observeRecentFiles(owner: LifecycleOwner, observer: (Boolean) -> Unit) {
+        viewModel.recentFilesLiveData.observe(owner, observer)
+    }
+
+    private fun onRecentFilesChanged(recent: Boolean) {
+        adapter.isRecentFiles = recent
+        updateQuickFilters()
+        updateRecentFooter()
+        binding.toolbar.title = null
+        binding.root.findViewById<View>(R.id.recentFilesTitle).isVisible = recent
+        binding.speedDialView.isVisible = !recent
+        if (recent) binding.speedDialView.close()
+        preview.clear()
+        updateBreadcrumbVisibility()
+        // The recent flag can dispatch before the mapped current path during picker startup.
+        // onCurrentPathChanged updates the destination toolbar once that path is available.
+        if (viewModel.currentPathLiveData.value != null) updateBottomToolbar()
+        requireActivity().invalidateOptionsMenu()
     }
 
     override fun observeCurrentPath(owner: LifecycleOwner, observer: (Path) -> Unit) {

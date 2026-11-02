@@ -42,9 +42,10 @@ class SettingsActivity : AppActivity(), OnThemeChangedListener, OnNightModeChang
         }
     }
 
-    fun setApplicationLocalesPre33(locales: LocaleListCompat) {
+    fun setApplicationLocales(locales: LocaleListCompat) {
         // HACK: Prevent this activity from being recreated due to locale change.
         delegate.onDestroy()
+        AppLanguage.applySaved(applicationContext)
         AppCompatDelegate.setApplicationLocales(locales)
         restart()
     }

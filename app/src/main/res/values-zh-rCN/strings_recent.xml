@@ -1,0 +1,17 @@
+<resources>
+    <string name="fw_recent_files">最近文件</string>
+    <string name="fw_recent_empty">暂无最近文件</string>
+    <string name="fw_recent_empty_hint">请允许文件访问，并检查包含的目录。保存文件后可下拉刷新；Android 收录新文件可能需要一些时间。</string>
+    <string name="fw_recent_scope">最近文件的目录范围</string>
+    <string name="fw_recent_scope_hint">包含子目录。读取 Android 的共享存储文件索引，不包含应用私有文件或尚未收录的文件。</string>
+    <string name="fw_recent_scope_all">全部可访问的已收录文件（默认）</string>
+    <string name="fw_recent_scope_exclude">排除以下目录</string>
+    <string name="fw_recent_scope_only">只包含以下目录</string>
+    <string name="fw_recent_scope_paths">目录绝对路径，每行一个</string>
+    <string name="fw_recent_scope_add_directory">添加目录…</string>
+    <string name="fw_recent_scope_invalid_path">每行请输入一个以 / 开头的绝对路径。</string>
+    <string name="fw_recent_scope_local_only">请选择手机本地目录。</string>
+    <string name="fw_recent_load_more">加载更多</string>
+    <string name="fw_recent_loading_more">加载中…</string>
+    <string name="fw_recent_retry_more">重试加载更多</string>
+</resources>

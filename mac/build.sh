@@ -16,15 +16,21 @@ fi
 
 echo "==> swift build -c release"
 cd "$ROOT"
-swift build -c release "${SWIFT_ARGS[@]}" 2>&1 | tail -30
+# bash 3.2（macOS 自带）在 set -u 下展开空数组会报 unbound variable，
+# 所以用 ${ARR[@]+...} 写法兼容空数组。
+swift build -c release ${SWIFT_ARGS[@]+"${SWIFT_ARGS[@]}"} 2>&1 | tail -30
 
-BIN="$(swift build -c release "${SWIFT_ARGS[@]}" --show-bin-path)/FileWeaveMenuBar"
+BIN="$(swift build -c release ${SWIFT_ARGS[@]+"${SWIFT_ARGS[@]}"} --show-bin-path)/FileWeaveMenuBar"
 [ -x "$BIN" ] || { echo "找不到可执行文件: $BIN"; exit 1; }
 
 echo "==> 组装 .app bundle"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/FileWeaveMac"
+CLI_BIN="$(dirname "$BIN")/FileWeaveCLI"
+[ -x "$CLI_BIN" ] || { echo "FileWeave CLI executable missing / 找不到 CLI: $CLI_BIN"; exit 1; }
+cp "$CLI_BIN" "$APP/Contents/MacOS/fileweave"
+cp "$ROOT/../docs/CLI.md" "$APP/Contents/Resources/CLI.md"
 
 # Reuse the Android launcher artwork for the menu bar and app bundle.
 cp "$ROOT/../art/launcher_icon-web.png" "$APP/Contents/Resources/FileWeaveIcon.png"
@@ -38,9 +44,10 @@ done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/FileWeave.icns"
 
 # 转录脚本等资源
+cp -R "$ROOT/Resources/en.lproj" "$ROOT/Resources/zh-Hans.lproj" "$APP/Contents/Resources/"
 cp "$ROOT/Resources/transcribe.py" "$APP/Contents/Resources/transcribe.py"
-cp "$ROOT/Resources/setup-asr.sh" "$APP/Contents/Resources/setup-asr.sh" 2>/dev/null || true
-chmod +x "$APP/Contents/Resources/setup-asr.sh" 2>/dev/null || true
+cp "$ROOT/Resources/setup-asr.sh" "$APP/Contents/Resources/setup-asr.sh"
+chmod +x "$APP/Contents/Resources/setup-asr.sh"
 
 # 注意：bridge.py / pairing.py / .state 不打进 bundle —— BridgeProcess 按
 # 源码树定位它们（见 MacPaths），数据和脚本始终留在仓库 mac/ 目录里。
@@ -51,6 +58,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <dict>
     <key>CFBundleName</key><string>$APP_NAME</string>
     <key>CFBundleDisplayName</key><string>$APP_NAME</string>
+    <key>CFBundleDevelopmentRegion</key><string>en</string>
+    <key>CFBundleLocalizations</key><array><string>en</string><string>zh-Hans</string></array>
     <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
     <key>CFBundleIconFile</key><string>FileWeave.icns</string>
     <key>CFBundleExecutable</key><string>FileWeaveMac</string>
@@ -80,6 +89,7 @@ echo "==> 签名"
 # ad-hoc 签名。注意权衡：TCC 隐私授权（本地网络这类弹窗）按签名链匹配记录，
 # ad-hoc（--sign -）每次构建指纹都变，用户点过的「允许」到下次构建就作废，
 # 权限弹窗会重新弹。要稳定身份时再引入固定的自签证书，这里先保持简单。
+codesign --force --sign - --timestamp=none "$APP/Contents/MacOS/fileweave"
 codesign --force --sign - --timestamp=none "$APP" 2>&1 | tail -3
 
 echo "==> 完成: $APP"

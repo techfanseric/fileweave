@@ -3,97 +3,25 @@ import AppKit
 
 /// 面板尺寸与排版常量，集中一处便于统一调整
 public enum Metrics {
-    public static let panelWidth: CGFloat = 440
-    static let rowPaddingH: CGFloat = 12
+    static let contentWidth: CGFloat = 440
+    static let trendWidth: CGFloat = 240
+    public static var panelWidth: CGFloat { min(720, (NSScreen.main?.visibleFrame.width ?? 1000) - 32) }
+    static let rowPaddingH: CGFloat = 16
     static let rowPaddingV: CGFloat = 4
     /// 单行行高
-    static let rowOneLine: CGFloat = 30
+    static let rowOneLine: CGFloat = 36
     /// 双行行高（带预览/摘要时）
-    static let rowTwoLines: CGFloat = 50
+    static let rowTwoLines: CGFloat = 56
     static let iconSize: CGFloat = 15
     public static var panelHeight: CGFloat {
-        min(500, (NSScreen.main?.visibleFrame.height ?? 800) - 40)
-    }
-}
-
-// MARK: - 合并面板（FileWeave 状态段 + 录音页）
-
-/// 菜单栏面板：顶部切换文件与录音，底部统一放设备状态与访达入口。
-///
-/// `bridge` 由外层（AppController / DebugApp）传入：菜单栏版传真正监管
-/// 子进程的那个实例；调试窗口不启动子进程，避免与正式实例争用端口。
-public struct FileWeavePanelView: View {
-    @EnvironmentObject private var app: AppState
-    @ObservedObject private var bridge: BridgeProcess
-
-    public init(bridge: BridgeProcess, showsRecordings: Bool = false) {
-        self.bridge = bridge
-        _page = State(initialValue: showsRecordings ? 1 : 0)
-    }
-
-    @State private var page: Int
-    public var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Image(systemName: "folder.badge.gearshape")
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel("FileWeave")
-                Picker("页面", selection: $page) {
-                    Text("手机文件").tag(0)
-                    Text("录音与转录").tag(1)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .controlSize(.small)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            Divider()
-            Group {
-                if page == 0 { SharedFilesView(bridge: bridge) } else { RecorderMenuView() }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            Divider()
-            HStack(spacing: 12) {
-                Circle()
-                    .fill(app.link.isReady ? Color.green : Color.secondary)
-                    .frame(width: 5, height: 5)
-                    .accessibilityHidden(true)
-                Text(app.link.title)
-                    .lineLimit(1)
-                    .help(connectionHelp)
-                Spacer(minLength: 4)
-                Button { bridge.openShared() } label: {
-                    Image(systemName: "folder.badge.person.crop")
-                }
-                .accessibilityLabel("共享给手机的文件")
-                .help("在访达中打开共享给手机的文件")
-                Button { bridge.openInbox() } label: {
-                    Image(systemName: "tray.and.arrow.down")
-                }
-                .accessibilityLabel("Mac 收件箱")
-                .help("在访达中打开 Mac 收件箱")
-            }
-            .buttonStyle(.borderless)
-            .font(.system(size: 11))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-        }
-        .frame(width: Metrics.panelWidth, height: Metrics.panelHeight)
-        .background(.regularMaterial)
-        .onChange(of: bridge.highlightID) { _, _ in page = 0 }
-    }
-
-    private var connectionHelp: String {
-        if case .ready(let info) = app.link { return info.detail }
-        return app.linkHint ?? app.link.title
+        min(640, (NSScreen.main?.visibleFrame.height ?? 800) - 48)
     }
 }
 
 // MARK: - 菜单栏主面板
 
 public struct RecorderMenuView: View {
+    @Environment(\.fileWeaveOverviewVisible) private var overviewVisible
     @EnvironmentObject private var app: AppState
     /// 单例 + @ObservedObject：登录项的状态变化不会经过 AppState 的
     /// objectWillChange，用 environmentObject 是收不到的
@@ -144,6 +72,7 @@ public struct RecorderMenuView: View {
         .onDisappear { searchFocused = false }
         .onChange(of: app.isPanelVisible) { _, visible in if visible { searchFocused = false } }
         .onExitCommand { searchFocused = false }
+        .onReceive(NotificationCenter.default.publisher(for: .fileWeaveFind)) { _ in searchFocused = true }
     }
 
     private var listView: some View {
@@ -162,9 +91,8 @@ public struct RecorderMenuView: View {
                 .focusable()
                 .accessibilityHidden(true)
 
-            header
-            Divider()
-            if app.hasRecordsToShow && !searchFocused {
+            if !overviewVisible { header; Divider() }
+            if app.hasRecordsToShow {
                 filterBar
                 Divider()
             }
@@ -201,13 +129,13 @@ public struct RecorderMenuView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-                .help("立即重新扫描")
+                .help(L("立即重新扫描"))
             }
 
             moreMenu
         }
         .padding(.horizontal, Metrics.rowPaddingH)
-        .padding(.vertical, 9)
+        .padding(.vertical, 8)
     }
 
     // MARK: 搜索框
@@ -216,36 +144,8 @@ public struct RecorderMenuView: View {
     /// 搜号码/姓名/类型，也搜已转录条目的正文与摘要。
         /// 搜索框本体。联想面板是浮层，不参与布局流，不会把下面内容顶下去。
     private var searchBar: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-
-            TextField("搜索号码、姓名或转录内容", text: $app.searchText)
-                .textFieldStyle(.plain)
-                .font(.system(size: 12))
-                .focused($searchFocused)
-                .onSubmit {
-                    app.commitSearch()      // 回车：搜当前词，并把它记进历史
-                    searchFocused = false
-                }
-
-            if !app.activeQuery.isEmpty {
-                Button { app.searchText = "" } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("清除搜索")
-            }
-        }
-        .padding(.horizontal, 7)
-        .padding(.vertical, 4)
-        .background(Color.primary.opacity(0.07),
-                    in: RoundedRectangle(cornerRadius: 6))
-        .frame(maxWidth: .infinity)
-        .padding(.trailing, 2)
+        NativeSearchField(text: $app.searchText, placeholder: L("搜索号码、姓名或转录内容"), onCommit: { app.commitSearch() })
+            .frame(height: 24)
     }
 
     // MARK: 筛选栏
@@ -256,9 +156,9 @@ public struct RecorderMenuView: View {
         Button(action: action) {
             HStack(spacing: 3) {
                 Text(title)
-                    .font(.system(size: 11, weight: active ? .semibold : .regular))
+                    .font(.system(size: 12, weight: active ? .semibold : .regular))
                 Text("\(count)")
-                    .font(.system(size: 10).monospacedDigit())
+                    .font(.system(size: 12).monospacedDigit())
                     .foregroundStyle(active ? Color.accentColor : Color.secondary.opacity(0.55))
             }
             .foregroundStyle(active ? Color.accentColor : Color.secondary)
@@ -278,25 +178,25 @@ public struct RecorderMenuView: View {
             Spacer(minLength: 6)
 
             if !app.activeQuery.isEmpty {
-                Text("命中 \(app.filteredCount)")
-                    .font(.system(size: 10).monospacedDigit())
+                Text(L("命中 {0}", app.filteredCount))
+                    .font(.system(size: 12).monospacedDigit())
                     .foregroundStyle(.tertiary)
-                    .help("已转录 \(app.searchableCount) 条可搜正文，其余只能搜号码和姓名")
+                    .help(L("已转录 {0} 条可搜正文，其余只能搜号码和姓名", app.searchableCount))
             }
 
             // 回收站入口：低频，混在筛选行里，不抢顶栏位置。
             // 只有手机里真躺着东西时才出现，不常驻一个永远显示 0 的按钮。
             if app.trashableCount > 0 || app.showTrashOnly {
-                filterTab("回收站", count: app.trashableCount,
+                filterTab(L("回收站"), count: app.trashableCount,
                           active: app.showTrashOnly) {
                     app.setTrashView(!app.showTrashOnly)
                 }
-                .help(app.showTrashOnly ? "回到录音列表"
-                                       : "手机回收站里有 \(app.trashableCount) 条，点开可以还原")
+                .help(app.showTrashOnly ? L("回到录音列表")
+                                       : L("手机回收站里有 {0} 条，点开可以还原", app.trashableCount))
             }
 
             Menu {
-                Picker("分组", selection: Binding(
+                Picker(L("分组"), selection: Binding(
                     get: { app.groupMode },
                     set: { app.groupMode = $0 }
                 )) {
@@ -308,7 +208,7 @@ public struct RecorderMenuView: View {
             } label: {
                 HStack(spacing: 2) {
                     Text(app.groupMode.label)
-                        .font(.system(size: 11))
+                        .font(.system(size: 12))
                     Image(systemName: "chevron.down")
                         .font(.system(size: 8, weight: .semibold))
                 }
@@ -328,11 +228,7 @@ public struct RecorderMenuView: View {
     private var list: some View {
         // 聚焦搜索框时，列表区整个变成搜索面板（历史 + 联想），
         // 不再用浮层盖住 —— 免得分不清浮层和列表是两回事。
-        if searchFocused {
-            searchPanel
-        } else {
-            recordingList
-        }
+        recordingList
     }
 
     /// 搜索态的面板：占满列表区，可滚动
@@ -344,9 +240,9 @@ public struct RecorderMenuView: View {
                 if items.isEmpty {
                     HStack(spacing: 6) {
                         Image(systemName: "magnifyingglass")
-                            .font(.system(size: 11))
+                            .font(.system(size: 12))
                             .foregroundStyle(.quaternary)
-                        Text(app.activeQuery.isEmpty ? "还没有搜索历史" : "没有匹配的建议")
+                        Text(app.activeQuery.isEmpty ? L("还没有搜索历史") : L("没有匹配的建议"))
                             .font(.system(size: 12))
                             .foregroundStyle(.tertiary)
                         Spacer()
@@ -387,7 +283,7 @@ public struct RecorderMenuView: View {
                 HStack(spacing: 6) {
                     Image(systemName: s.origin == .history
                           ? "clock.arrow.circlepath" : "phone.and.waveform")
-                        .font(.system(size: 10))
+                        .font(.system(size: 12))
                         .foregroundStyle(.tertiary)
                         .frame(width: 13)
 
@@ -398,8 +294,8 @@ public struct RecorderMenuView: View {
                     Spacer(minLength: 6)
 
                     if s.count > 0 {
-                        Text("共 \(s.count) 条")
-                            .font(.system(size: 11).monospacedDigit())
+                        Text(L("共 {0} 条", s.count))
+                            .font(.system(size: 12).monospacedDigit())
                             .foregroundStyle(.tertiary)
                     }
                 }
@@ -415,7 +311,7 @@ public struct RecorderMenuView: View {
                     app.removeSearchHistory(s.text)
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 11))
+                        .font(.system(size: 12))
                         .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
@@ -423,7 +319,7 @@ public struct RecorderMenuView: View {
                 .padding(.trailing, 10)
                 .padding(.vertical, 6)
                 .contentShape(Rectangle())
-                .help("删除这条历史")
+                .help(L("删除这条历史"))
                 .onHover { inside in
                     hovered = inside ? s.id : (hovered == s.id ? nil : hovered)
                 }
@@ -442,7 +338,7 @@ public struct RecorderMenuView: View {
                 disconnectedState
             }
         } else {
-            List {
+            List(selection: $app.selection) {
                 ForEach(secs) { sec in
                     Section {
                         ForEach(sec.rows) { rec in
@@ -451,15 +347,25 @@ public struct RecorderMenuView: View {
                                 armedTrash: armedTrash == rec.id,
                                 onTrashTap: { handleTrashTap(rec) }
                             )
-                            .listRowInsets(EdgeInsets())
+                            .tag(rec.id)
+                            .fileWeaveListRow(isSelected: app.selection.contains(rec.id))
+                            .listRowInsets(EdgeInsets(top: 2, leading: 0, bottom: 2, trailing: 0))
                         }
                     } header: {
                         sectionHeader(sec.title, count: sec.rows.count)
                     }
                 }
             }
-            .listStyle(.inset)
-            .alternatingRowBackgrounds()
+            .contextMenu(forSelectionType: String.self) { ids in
+                if let rec = secs.flatMap({ $0.rows }).first(where: { ids.contains($0.id) }) {
+                    RecordingContextMenu(rec: rec, onTrashTap: { handleTrashTap(rec) })
+                }
+            } primaryAction: { ids in
+                guard let rec = secs.flatMap({ $0.rows }).first(where: { ids.contains($0.id) }) else { return }
+                if app.transcript(for: rec) != nil { app.openTranscript(rec) }
+                else { Task { await app.downloadOne(rec) } }
+            }
+            .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .environment(\.defaultMinListRowHeight, Metrics.rowOneLine)
             .frame(maxHeight: .infinity)
@@ -483,11 +389,11 @@ public struct RecorderMenuView: View {
                 .foregroundStyle(.tertiary)
             Text(app.showTrashOnly
                  ? (app.trashRecordings.isEmpty
-                    ? "手机回收站里没有录音"
-                    : "回收站里没有符合条件的录音")
+                    ? L("手机回收站里没有录音")
+                    : L("回收站里没有符合条件的录音"))
                  : (wholePhoneEmpty
-                    ? "\(linkTitle)上没有通话录音"
-                    : "没有符合条件的录音"))
+                    ? (app.recordingsSharingEnabled ? L("当前共享录音目录中没有音频，请在手机检查目录设置。") : L("手机录音共享已关闭，请在手机的录音与转录中开启。"))
+                    : L("没有符合条件的录音")))
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
         }
@@ -498,7 +404,7 @@ public struct RecorderMenuView: View {
     /// 顶栏里那台设备的简称。空状态文案要用它点明「是哪台没有」。
     private var linkTitle: String {
         if case .ready(let info) = app.link { return info.name }
-        return "这台手机"
+        return L("这台手机")
     }
 
     /// 没连上时，这块地方就是唯一能说话的地方。
@@ -517,7 +423,7 @@ public struct RecorderMenuView: View {
 
             if let hint = app.linkHint {
                 Text(hint)
-                    .font(.system(size: 11))
+                    .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
@@ -532,10 +438,10 @@ public struct RecorderMenuView: View {
     private func sectionHeader(_ title: String, count: Int) -> some View {
         HStack(spacing: 6) {
             Text(title)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.secondary)
             Text("\(count)")
-                .font(.system(size: 10).monospacedDigit())
+                .font(.system(size: 12).monospacedDigit())
                 .foregroundStyle(.quaternary)
             Spacer()
         }
@@ -549,15 +455,15 @@ public struct RecorderMenuView: View {
     private var footer: some View {
         VStack(spacing: 6) {
 
-            if let err = app.errorText {
+            if !overviewVisible, let err = app.errorText {
                 Text(err)
-                    .font(.system(size: 11))
+                    .font(.system(size: 12))
                     .foregroundStyle(.red)
                     .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
-            } else if app.selection.isEmpty, let info = app.infoText {
+            } else if !overviewVisible && app.selection.isEmpty, let info = app.infoText {
                 Text(info)
-                    .font(.system(size: 11))
+                    .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -570,9 +476,9 @@ public struct RecorderMenuView: View {
                         Button {
                             app.revealTranscriptFolder()
                         } label: {
-                            Label("转录文件夹", systemImage: "folder")
+                            Label(L("转录文件夹"), systemImage: "folder")
                                 .labelStyle(.titleAndIcon)
-                                .font(.system(size: 11))
+                                .font(.system(size: 12))
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(Color.accentColor)
@@ -592,21 +498,21 @@ public struct RecorderMenuView: View {
                     } label: {
                         HStack(spacing: 3) {
                             Image(systemName: "sparkles")
-                                .font(.system(size: 10))
-                            Text("\(app.newCount) 条新增")
-                                .font(.system(size: 11, weight: .medium))
+                                .font(.system(size: 12))
+                            Text(L("{0} 条新增", app.newCount))
+                                .font(.system(size: 12, weight: .medium))
                         }
                         .foregroundStyle(Color.accentColor)
                     }
                     .buttonStyle(.plain)
-                    .help("点击标记为已读")
+                    .help(L("点击标记为已读"))
                 }
 
                 if let at = app.lastScanAt {
                     Text(Fmt.clock.string(from: at))
-                        .font(.system(size: 10).monospacedDigit())
+                        .font(.system(size: 12).monospacedDigit())
                         .foregroundStyle(.tertiary)
-                        .help("上次扫描时间")
+                        .help(L("上次扫描时间"))
                 }
 
                 Spacer(minLength: 4)
@@ -614,8 +520,8 @@ public struct RecorderMenuView: View {
                 Group {
                     HStack(spacing: 8) {
                         if !app.selection.isEmpty {
-                            Text("已选 \(app.selection.count)")
-                                .font(.system(size: 11))
+                            Text(L("已选 {0}", app.selection.count))
+                                .font(.system(size: 12))
                                 .foregroundStyle(.secondary)
                         }
                         batchMenu
@@ -632,50 +538,67 @@ public struct RecorderMenuView: View {
     /// ——那个作用于勾选项，这个作用于整个库。
     private var moreMenu: some View {
         Menu {
-            Button("全选当前筛选结果") { app.selectAll() }
-            Button("反选当前筛选结果") { app.invertSelection() }
-            Button("取消全部勾选") { app.clearSelection() }
+            if !app.suggestions.isEmpty || !app.searchHistory.isEmpty {
+                Menu(L("搜索历史与建议")) {
+                    ForEach(app.suggestions) { suggestion in
+                        Button(suggestion.text) { app.chooseSuggestion(suggestion.text) }
+                    }
+                    if !app.searchHistory.isEmpty {
+                        Divider()
+                        Menu(L("移除搜索历史")) {
+                            ForEach(app.searchHistory, id: \.self) { item in
+                                Button(item) { app.removeSearchHistory(item) }
+                            }
+                        }
+                        Button(L("清除搜索历史")) { app.clearSearchHistory() }
+                    }
+                }
+                Divider()
+            }
+            Button(L("全选当前筛选结果")) { app.selectAll() }
+            Button(L("反选当前筛选结果")) { app.invertSelection() }
+            Button(L("取消全部勾选")) { app.clearSelection() }
             Divider()
 
-            Button("一键转录全部（\(app.untranscribed.count) 条未转录）") {
+            Button(L("一键转录全部（{0} 条未转录）", app.untranscribed.count)) {
                 BulkConfirm.transcribeAll(app: app)
             }
             .disabled(!app.asrAvailable || app.untranscribed.isEmpty)
 
-            Button("下载全部筛选结果…") {
+            Button(L("下载全部筛选结果…")) {
                 Task { await app.downloadAllVisible() }
             }
 
-            Button("补齐缺失的摘要") {
+            Button(L("补齐缺失的摘要")) {
                 app.summarizeAllMissing()
             }
             .disabled(!app.aiSummaryEnabled || !app.aiSummaryAvailable)
 
             Divider()
 
-            Button("清除新增标记（\(app.newCount)）") {
+            Button(L("清除新增标记（{0}）", app.newCount)) {
                 app.clearNewFlags()
             }
             .disabled(app.newCount == 0)
 
-            Button("查看转录文件夹") { app.revealTranscriptFolder() }
+            Button(L("查看转录文件夹")) { app.revealTranscriptFolder() }
 
             Divider()
 
-            Menu("刷新间隔") {
-                Button("15 秒") { app.pollInterval = 15 }
-                Button("30 秒") { app.pollInterval = 30 }
-                Button("1 分钟") { app.pollInterval = 60 }
-                Button("5 分钟") { app.pollInterval = 300 }
+            Menu(L("刷新间隔")) {
+                Button(L("15 秒")) { app.pollInterval = 15 }
+                Button(L("30 秒")) { app.pollInterval = 30 }
+                Button(L("1 分钟")) { app.pollInterval = 60 }
+                Button(L("5 分钟")) { app.pollInterval = 300 }
             }
 
             // Toggle 放进 Menu 里系统自己画勾，不用自己拼「开/关」文字
-            Toggle("登录时启动", isOn: Binding(
+            Toggle(L("登录时启动"), isOn: Binding(
                 get: { login.isEnabled },
                 set: {
                     login.setEnabled($0)
                     if let err = login.lastError {
-                        app.notify("设置开机启动失败：\(err)")
+                        app.notify(L("设置开机启动失败：{0}", err))
                     }
                 }
             ))
@@ -688,7 +611,7 @@ public struct RecorderMenuView: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .foregroundStyle(.secondary)
-        .help("更多批量操作")
+        .help(L("更多批量操作"))
     }
 
     /// 所有可批量做的事收在一个菜单里，按钮区只留这一个入口。
@@ -696,42 +619,42 @@ public struct RecorderMenuView: View {
     private var batchMenu: some View {
         Menu {
             if app.showTrashOnly {
-                Button("全选") { app.selectAll() }
-                Button("从回收站还原所选…") {
+                Button(L("全选")) { app.selectAll() }
+                Button(L("从回收站还原所选…")) {
                     Task { await app.restoreSelectedFromTrash() }
                 }
             } else {
-                Button("全选") { app.selectAll() }
-                Button("全不选") { app.clearSelection() }
+                Button(L("全选")) { app.selectAll() }
+                Button(L("全不选")) { app.clearSelection() }
                 Divider()
-                Button("下载所选…") {
+                Button(L("下载所选…")) {
                     Task { await app.downloadSelected() }
                 }
-                Button("转录所选…") {
+                Button(L("转录所选…")) {
                     Task { await app.transcribeSelected() }
                 }
                 .disabled(!app.asrAvailable)
                 Divider()
-                Button("移到回收站…", role: .destructive) {
+                Button(L("移到回收站…"), role: .destructive) {
                     TrashConfirm.present(for: app.selectedRecordings, app: app)
                 }
             }
             Divider()
-            Button("清除新增标记") { app.clearNewFlags() }
+            Button(L("清除新增标记")) { app.clearNewFlags() }
             .disabled(app.newCount == 0)
         } label: {
             HStack(spacing: 3) {
                 Image(systemName: "ellipsis.circle")
-                    .font(.system(size: 11))
-                Text(app.selection.isEmpty ? "批量操作" : "批量操作 \(app.selection.count)")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 12))
+                Text(app.selection.isEmpty ? L("批量操作") : L("批量操作 {0}", app.selection.count))
+                    .font(.system(size: 12, weight: .medium))
             }
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
         .disabled(app.selection.isEmpty)
-        .help("选中若干条后可批量下载、转录或删除")
+        .help(L("选中若干条后可批量下载、转录或删除"))
     }
 }
 
@@ -749,8 +672,8 @@ struct RecordingRow: View {
     /// 在回收站里的行第二行写「删除于」，别让人以为是可用条目
     private var trashLine: String? {
         guard isTrashed else { return nil }
-        guard let at = rec.movedAt else { return "手机回收站" }
-        return "手机回收站 · 删除于 \(Fmt.dayTime.string(from: at))"
+        guard let at = rec.movedAt else { return L("手机回收站") }
+        return L("手机回收站 · 删除于 {0}", Fmt.dayTime.string(from: at))
     }
 
     /// 回收站条目固定显示删除时间；否则搜索命中正文时给上下文，否则给摘要/预览
@@ -767,19 +690,13 @@ struct RecordingRow: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
-            Button { app.toggleSelection(rec) } label: {
-                marker.frame(width: 14, height: 14)
-            }
-            .buttonStyle(.plain)
-            .help(isPicked ? "取消勾选" : "勾选")
-
             // 类别图标：跨两行垂直居中，一眼分辨类型。
             // 在回收站里的换成垃圾桶图标，别让可用的和删掉的长得一样。
             Image(systemName: isTrashed ? "trash" : rec.kind.symbol)
                 .font(.system(size: Metrics.iconSize))
                 .foregroundStyle(isTrashed ? Color.secondary : Color.secondary.opacity(0.9))
                 .frame(width: Metrics.iconSize)
-                .help(isTrashed ? "在手机回收站里" : rec.kind.label)
+                .help(isTrashed ? L("在手机回收站里") : rec.kind.label)
 
             VStack(alignment: .leading, spacing: 3) {
                 // 第一行：对象名 + 右侧元信息（时间、大小），让第二行独占整宽。
@@ -799,12 +716,12 @@ struct RecordingRow: View {
                     Spacer(minLength: 10)
 
                     Text(Fmt.dayTime.string(from: rec.displayTime))
-                        .font(.system(size: 11).monospacedDigit())
+                        .font(.system(size: 12).monospacedDigit())
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
 
                     Text(rec.sizeText)
-                        .font(.system(size: 11).monospacedDigit())
+                        .font(.system(size: 12).monospacedDigit())
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
                 }
@@ -812,7 +729,7 @@ struct RecordingRow: View {
                 // 第二行：预览/摘要，整行宽度都是它的
                 if let line = secondLine {
                     Text(line)
-                        .font(.system(size: 11))
+                        .font(.system(size: 12))
                         .foregroundStyle(.tertiary)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
@@ -840,10 +757,8 @@ struct RecordingRow: View {
         .padding(.vertical, Metrics.rowPaddingV)
         .frame(minHeight: secondLine == nil ? Metrics.rowOneLine : Metrics.rowTwoLines,
                alignment: .center)
-        .background(rowBackground)
+        .background(armedTrash && !isPicked ? Color.red.opacity(0.10) : Color.clear)
         .contentShape(Rectangle())
-        .onTapGesture { app.toggleSelection(rec) }
-        .contextMenu { rowMenu }
     }
 
     /// 勾选标记：已勾选 ✓，未勾选空心圈
@@ -861,13 +776,6 @@ struct RecordingRow: View {
         }
     }
 
-    private var rowBackground: Color {
-        if armedTrash { return Color.red.opacity(0.10) }
-        if isTrashed { return Color.secondary.opacity(0.08) }
-        if isPicked { return Color.accentColor.opacity(0.15) }
-        return .clear
-    }
-
     /// 还原按钮：把文件从手机回收站搬回原位置
     @ViewBuilder
     private var restoreButton: some View {
@@ -876,7 +784,7 @@ struct RecordingRow: View {
                 .controlSize(.small)
                 .scaleEffect(0.5)
                 .frame(width: 14, height: 14)
-                .help("正在还原")
+                .help(L("正在还原"))
         } else {
             Button { Task { await app.restoreFromTrash(rec) } } label: {
                 Image(systemName: "arrow.uturn.backward.circle")
@@ -884,7 +792,7 @@ struct RecordingRow: View {
                     .foregroundStyle(Color.accentColor)
             }
             .buttonStyle(.plain)
-            .help("从手机回收站还原")
+            .help(L("从手机回收站还原"))
         }
     }
 
@@ -897,7 +805,7 @@ struct RecordingRow: View {
                 .controlSize(.small)
                 .scaleEffect(0.5)
                 .frame(width: 14, height: 14)
-                .help("正在移到回收站")
+                .help(L("正在移到回收站"))
         } else {
             Button(action: onTrashTap) {
                 Image(systemName: armedTrash ? "trash.fill" : "trash")
@@ -905,7 +813,7 @@ struct RecordingRow: View {
                     .foregroundStyle(armedTrash ? Color.red : Color.secondary.opacity(0.6))
             }
             .buttonStyle(.plain)
-            .help(armedTrash ? "再点一次确认删除" : "移到手机回收站")
+            .help(armedTrash ? L("再点一次确认删除") : L("移到手机回收站"))
         }
     }
 
@@ -915,10 +823,10 @@ struct RecordingRow: View {
             Image(systemName: "text.bubble")
                 .font(.system(size: 12))
                 .foregroundStyle(.quaternary)
-                .help(app.asrUnavailableReason ?? "转录环境未就绪")
+                .help(app.asrUnavailableReason ?? L("转录环境未就绪"))
         } else if isTranscribing {
             ProgressRing(progress: app.progress(for: rec))
-                .help("转录中…")
+                .help(L("转录中…"))
         } else if let t = transcript {
             Button { app.openTranscript(rec) } label: {
                 Image(systemName: "text.bubble.fill")
@@ -926,7 +834,7 @@ struct RecordingRow: View {
                     .foregroundStyle(Color.accentColor)
             }
             .buttonStyle(.plain)
-            .help("已转录 \(t.sentenceCount) 句，点击查看")
+            .help(L("已转录 {0} 句，点击查看", t.sentenceCount))
         } else {
             Button { Task { await app.transcribe(rec) } } label: {
                 Image(systemName: "text.bubble")
@@ -934,62 +842,71 @@ struct RecordingRow: View {
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
-            .help("转录为文字 · 按 \(app.speakerHintText(for: rec))识别说话人")
+            .help(L("转录为文字 · 按 {0}识别说话人", app.speakerHintText(for: rec)))
         }
     }
 
-    @ViewBuilder
-    private var rowMenu: some View {
+}
+
+private struct RecordingContextMenu: View {
+    @EnvironmentObject private var app: AppState
+    let rec: Recording
+    var onTrashTap: () -> Void
+    private var transcript: TranscriptRecord? { app.transcript(for: rec) }
+    private var isTrashed: Bool { app.isTrashed(rec) }
+    private var isPicked: Bool { app.isSelected(rec) }
+
+    var body: some View {
         // 在回收站里的条目文件还在（只是换了一个位置），
         // 所以转录、下载一样能用，菜单不要把它们藏掉。
         if isTrashed {
-            Button("从手机回收站还原") { Task { await app.restoreFromTrash(rec) } }
+            Button(L("从手机回收站还原")) { Task { await app.restoreFromTrash(rec) } }
                 .disabled(app.restoring.contains(rec.id))
             Divider()
         }
 
-        Button("转录为文字…") { Task { await app.transcribe(rec) } }
+        Button(L("转录为文字…")) { Task { await app.transcribe(rec) } }
             .disabled(!app.asrAvailable)
 
         if let t = transcript {
-            Button("重新生成摘要") {
+            Button(L("重新生成摘要")) {
                 app.generateSummary(for: rec,
                                     txtURL: URL(fileURLWithPath: t.txtPath))
             }
         }
 
-        Menu("转录时假定人数") {
-            Button("自动判断") { Task { await app.transcribe(rec, speakers: 0) } }
-            Button("1 人") { Task { await app.transcribe(rec, speakers: 1) } }
-            Button("2 人") { Task { await app.transcribe(rec, speakers: 2) } }
-            Button("3 人") { Task { await app.transcribe(rec, speakers: 3) } }
+        Menu(L("转录时假定人数")) {
+            Button(L("自动判断")) { Task { await app.transcribe(rec, speakers: 0) } }
+            Button(L("1 人")) { Task { await app.transcribe(rec, speakers: 1) } }
+            Button(L("2 人")) { Task { await app.transcribe(rec, speakers: 2) } }
+            Button(L("3 人")) { Task { await app.transcribe(rec, speakers: 3) } }
         }
         .disabled(!app.asrAvailable)
 
         if transcript != nil {
-            Button("查看转录内容") { app.openTranscript(rec) }
+            Button(L("查看转录内容")) { app.openTranscript(rec) }
         }
 
         Divider()
 
         if app.isTrashed(rec) {
-            Button("从手机回收站还原") { Task { await app.restoreFromTrash(rec) } }
+            Button(L("从手机回收站还原")) { Task { await app.restoreFromTrash(rec) } }
         } else {
-            Button("移到手机回收站…", role: .destructive) {
+            Button(L("移到手机回收站…"), role: .destructive) {
                 onTrashTap()
             }
         }
 
-        Button("下载这个…") { Task { await app.downloadOne(rec) } }
+        Button(L("下载这个…")) { Task { await app.downloadOne(rec) } }
 
         if isPicked {
-            Button("取消勾选") { app.deselect(rec) }
+            Button(L("取消勾选")) { app.deselect(rec) }
         } else {
-            Button("勾选") { app.select(rec) }
+            Button(L("勾选")) { app.select(rec) }
         }
 
         if let p = app.libraryPath(for: rec) {
-            Button("在访达中显示音频") { NSWorkspace.shared.activateFileViewerSelecting([p]) }
+            Button(L("在访达中显示音频")) { NSWorkspace.shared.activateFileViewerSelecting([p]) }
         }
     }
 }
@@ -1015,16 +932,16 @@ struct TranscriptReaderView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             HStack(spacing: 8) {
                                 if let spk = seg.speaker {
-                                    Text("说话人 \(spk)")
-                                        .font(.system(size: 11, weight: .semibold))
+                                    Text(L("说话人 {0}", spk))
+                                        .font(.system(size: 12, weight: .semibold))
                                         .foregroundStyle(Color.accentColor)
                                 } else {
-                                    Text("未分离")
-                                        .font(.system(size: 11))
+                                    Text(L("未分离"))
+                                        .font(.system(size: 12))
                                         .foregroundStyle(.tertiary)
                                 }
                                 Text("\(seg.start) → \(seg.end)")
-                                    .font(.system(size: 10).monospacedDigit())
+                                    .font(.system(size: 12).monospacedDigit())
                                     .foregroundStyle(.tertiary)
                             }
                             Text(seg.text)
@@ -1052,7 +969,7 @@ struct TranscriptReaderView: View {
                     .font(.system(size: 12, weight: .semibold))
             }
             .buttonStyle(.plain)
-            .help("返回列表")
+            .help(L("返回列表"))
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(doc.title)
@@ -1061,12 +978,12 @@ struct TranscriptReaderView: View {
                 if let rec = app.recordings.first(where: { $0.id == doc.remotePath }),
                    let s = app.transcript(for: rec)?.summary {
                     Text(s)
-                        .font(.system(size: 10))
+                        .font(.system(size: 12))
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
                 } else {
-                    Text("转录内容")
-                        .font(.system(size: 10))
+                    Text(L("转录内容"))
+                        .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -1085,34 +1002,34 @@ struct TranscriptReaderView: View {
                 }
             } label: {
                 Image(systemName: copiedPath ? "checkmark" : "doc.on.doc")
-                    .font(.system(size: 11))
+                    .font(.system(size: 12))
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
-            .help("复制转录文件的完整路径")
+            .help(L("复制转录文件的完整路径"))
 
             Button {
                 NSWorkspace.shared.activateFileViewerSelecting([doc.txtURL])
             } label: {
                 Image(systemName: "folder")
-                    .font(.system(size: 11))
+                    .font(.system(size: 12))
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
-            .help("在访达中显示 TXT")
+            .help(L("在访达中显示 TXT"))
         }
         .padding(.horizontal, Metrics.rowPaddingH)
-        .padding(.vertical, 9)
+        .padding(.vertical, 8)
     }
 
     private var metaBar: some View {
         HStack(spacing: 10) {
             if !doc.duration.isEmpty { Label(doc.duration, systemImage: "clock") }
-            if !doc.summary.isEmpty { Text(doc.summary) }
+            if !doc.model.isEmpty { Text(doc.model).lineLimit(1) }
             Spacer()
-            Text("\(doc.segments.count) 句")
+            Text(L("{0} 句", doc.segments.count))
         }
-        .font(.system(size: 10))
+        .font(.system(size: 12))
         .labelStyle(.titleAndIcon)
         .foregroundStyle(.secondary)
         .padding(.horizontal, Metrics.rowPaddingH)
@@ -1121,13 +1038,13 @@ struct TranscriptReaderView: View {
 
     private var footerBar: some View {
         HStack(spacing: 8) {
-            Text("识别可能有误，请对照原音核对")
-                .font(.system(size: 10))
+            Text(L("识别可能有误，请对照原音核对"))
+                .font(.system(size: 12))
                 .foregroundStyle(.tertiary)
             Spacer(minLength: 4)
-            Button("用其他程序打开") { NSWorkspace.shared.open(doc.txtURL) }
+            Button(L("用其他程序打开")) { NSWorkspace.shared.open(doc.txtURL) }
                 .buttonStyle(.plain)
-                .font(.system(size: 11))
+                .font(.system(size: 12))
         }
         .padding(.horizontal, Metrics.rowPaddingH)
         .padding(.vertical, 8)
@@ -1145,14 +1062,10 @@ enum BulkConfirm {
 
         let alert = NSAlert()
         alert.alertStyle = .informational
-        alert.messageText = "转录全部 \(targets.count) 条未转录的录音？"
-        alert.informativeText = """
-        会按列表顺序逐条处理，每条大约 7 秒到 40 秒不等。
-        过程中面板可以关掉，任务在后台继续。
-        转录结果存在「转录文件夹」，随时能回来读。
-        """
-        alert.addButton(withTitle: "开始转录")
-        alert.addButton(withTitle: "取消")
+        alert.messageText = L("转录全部 {0} 条未转录的录音？", targets.count)
+        alert.informativeText = L("会按列表顺序逐条处理，每条大约 7 秒到 40 秒不等。\n过程中面板可以关掉，任务在后台继续。\n转录结果存在「转录文件夹」，随时能回来读。")
+        alert.addButton(withTitle: L("开始转录"))
+        alert.addButton(withTitle: L("取消"))
 
         if alert.runModal() == .alertFirstButtonReturn {
             Task { await app.transcribeAllRemaining() }
@@ -1170,25 +1083,25 @@ enum TrashConfirm {
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = recs.count == 1
-            ? "把「\(recs[0].subject)」移到手机回收站？"
-            : "把 \(recs.count) 条录音移到手机回收站？"
+            ? L("把「{0}」移到手机回收站？", recs[0].subject)
+            : L("把 {0} 条录音移到手机回收站？", recs.count)
 
-        var detail = "会移到手机自带的「最近删除」，"
-        detail += "在手机的「文件」或「图库」里可以恢复，不会永久删除。\n"
+        var detail = L("会移到手机自带的「最近删除」，")
+        detail += L("在手机的「文件」或「图库」里可以恢复，不会永久删除。\n")
         if recs.count == 1 {
             let r = recs[0]
             detail += "\n\(r.subject) · \(r.kind.label) · \(r.sizeText)"
             if app.isDownloaded(r) || app.transcript(for: r) != nil {
-                detail += "\n本机已有副本，可选择一并删除。"
+                detail += L("\n本机已有副本，可选择一并删除。")
             }
         } else {
             let total = recs.reduce(Int64(0)) { $0 + $1.size }
-            detail += "\n合计 \(ByteCountFormatter.string(fromByteCount: total, countStyle: .file))"
+            detail += L("\n合计 {0}", FileWeaveFormat.bytes(total))
         }
         alert.informativeText = detail
-        alert.addButton(withTitle: "移到回收站")
-        alert.addButton(withTitle: "取消")
-        alert.buttons.last?.hasDestructiveAction = true
+        alert.addButton(withTitle: L("移到回收站"))
+        alert.addButton(withTitle: L("取消"))
+        alert.buttons.first?.hasDestructiveAction = true
 
         if alert.runModal() == .alertFirstButtonReturn {
             let alsoLocal = recs.count == 1
@@ -1204,10 +1117,10 @@ enum LocalDeleteConfirm {
     static func askIfNeeded() -> Bool {
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "同时删除本机的音频和转录文本？"
-        alert.informativeText = "选择「保留」会只动手机，本机副本留着。转录的文字比较贵重，建议保留。"
-        alert.addButton(withTitle: "保留本机副本")
-        alert.addButton(withTitle: "一并删除")
+        alert.messageText = L("同时删除本机的音频和转录文本？")
+        alert.informativeText = L("选择「保留」会只动手机，本机副本留着。转录的文字比较贵重，建议保留。")
+        alert.addButton(withTitle: L("保留本机副本"))
+        alert.addButton(withTitle: L("一并删除"))
         alert.buttons.last?.hasDestructiveAction = true
         return alert.runModal() == .alertSecondButtonReturn
     }

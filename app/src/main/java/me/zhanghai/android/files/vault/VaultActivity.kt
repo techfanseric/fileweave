@@ -1,5 +1,18 @@
 package me.zhanghai.android.files.vault
 
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
+import me.zhanghai.android.files.design.*
+import me.zhanghai.android.files.file.asFileSize
 import android.content.Intent
 import android.os.Bundle
 import android.provider.OpenableColumns
@@ -38,6 +51,12 @@ class VaultActivity : FeatureActivity() {
     private var enrollmentPassword: ByteArray? = null
     private class BiometricAttempt(val cipher: Cipher, val vaultId: ByteArray,
         val generation: Long, val envelope: VaultBiometricEnvelope?)
+    // Never save password drafts. Clear synchronously as soon as this Activity stops.
+    private var passwordDraft by mutableStateOf("")
+    private var confirmationDraft by mutableStateOf("")
+    private var passwordInvalid by mutableStateOf(false)
+    private var vaultEntries by mutableStateOf<List<VaultEntry>?>(null)
+    private var listFailed by mutableStateOf(false)
     private var busy = false
     private var openingVideo = false
     private var renderEpoch = 0
@@ -116,6 +135,7 @@ class VaultActivity : FeatureActivity() {
     }
     override fun onResume() { super.onResume(); openingVideo = false; render() }
     override fun onStop() {
+        passwordDraft = ""; confirmationDraft = ""; passwordInvalid = false
         authEpoch++
         cancelBiometric()
         if (!openingVideo && !isChangingConfigurations) VaultSession.lock()
@@ -124,82 +144,107 @@ class VaultActivity : FeatureActivity() {
 
     private fun render() {
         val epoch = ++renderEpoch
-        screen(getString(R.string.fw_vault_title))
-        if (busy || biometricAttempt != null) { text(getString(R.string.fw_working)); return }
         val exists = File(root, "gocryptfs.conf").exists()
-        if (!VaultSession.isOpen()) {
-            text(getString(if (exists) R.string.fw_vault_locked else R.string.fw_vault_intro))
-            val input = TextInputEditText(this).apply {
-                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-                isSaveEnabled = false
-                if (android.os.Build.VERSION.SDK_INT >= 26) importantForAutofill = android.view.View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
-                hint = getString(R.string.fw_password)
-            }
-            content.addView(TextInputLayout(this).apply { addView(input) })
-            var confirm: TextInputEditText? = null
-            if (!exists) {
-                confirm = TextInputEditText(this).apply {
-                    inputType = input.inputType; isSaveEnabled = false
-                    if (android.os.Build.VERSION.SDK_INT >= 26) importantForAutofill = android.view.View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
-                    hint = getString(R.string.fw_password_confirm)
+        val open = VaultSession.isOpen()
+        val working = busy || biometricAttempt != null
+        if (!open) vaultEntries = null
+        composeScreen {
+            val actions = buildList {
+                if (!working) {
+                    add(PageAction(stringResource(R.string.fw_redesign_vault_security)) {
+                        MaterialAlertDialogBuilder(this@VaultActivity).setTitle(R.string.fw_redesign_vault_security)
+                            .setMessage(R.string.fw_vault_biometric_explanation).setPositiveButton(android.R.string.ok, null).show()
+                    })
+                    if (!exists) add(PageAction(stringResource(R.string.fw_vault_restore)) { restore.launch(arrayOf("application/zip", "application/octet-stream")) })
+                    if (exists) add(PageAction(stringResource(R.string.fw_vault_backup)) { backup.launch("FileWeave-vault.zip") })
+                    if (open) {
+                        if (biometricStore.isEnabled()) add(PageAction(stringResource(R.string.fw_vault_biometric_disable)) {
+                            try { biometricStore.disable(); render() } catch (_: Exception) { biometricUnavailable() }
+                        }) else add(PageAction(stringResource(R.string.fw_vault_biometric_enable)) { enrollBiometric() })
+                    }
                 }
-                content.addView(TextInputLayout(this).apply { addView(confirm) })
             }
-            button(getString(if (exists) R.string.fw_unlock else R.string.fw_vault_create)) {
-                val chars = input.text?.toString().orEmpty()
-                if (chars.isEmpty() || !exists && (chars.length < 12 || chars != confirm?.text?.toString())) {
-                    input.error = getString(R.string.fw_password_invalid)
-                    return@button
+            FeaturePage(stringResource(R.string.fw_vault_title), { finish() }, actions, working) {
+                if (working) {
+                    item { EmptyContent(stringResource(R.string.fw_working), stringResource(R.string.fw_redesign_busy_hint), R.drawable.lock_icon_white_24dp) }
+                } else if (!open) {
+                    item {
+                        Column(Modifier.padding(horizontal = 24.dp).widthIn(max = 480.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            Text(stringResource(if (exists) R.string.fw_vault_locked else R.string.fw_vault_intro),
+                                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(vertical = 16.dp))
+                            OutlinedTextField(passwordDraft, { passwordDraft = it; passwordInvalid = false }, label = { Text(stringResource(R.string.fw_password)) },
+                                singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false), visualTransformation = PasswordVisualTransformation(), isError = passwordInvalid,
+                                modifier = Modifier.fillMaxWidth())
+                            if (!exists) OutlinedTextField(confirmationDraft, { confirmationDraft = it; passwordInvalid = false }, label = { Text(stringResource(R.string.fw_password_confirm)) },
+                                singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false), visualTransformation = PasswordVisualTransformation(), isError = passwordInvalid,
+                                modifier = Modifier.fillMaxWidth())
+                            if (passwordInvalid) Text(stringResource(R.string.fw_password_invalid), color = MaterialTheme.colorScheme.error)
+                            Button(onClick = {
+                                if (passwordDraft.isEmpty() || !exists && (passwordDraft.length < 12 || passwordDraft != confirmationDraft)) passwordInvalid = true
+                                else {
+                                    val secret = passwordDraft.toByteArray(Charsets.UTF_8)
+                                    passwordDraft = ""; confirmationDraft = ""
+                                    unlockWithPassword(secret, !exists, VaultSession.generation())
+                                }
+                            }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(if (exists) R.string.fw_unlock else R.string.fw_vault_create)) }
+                            if (exists && biometricStore.isEnabled()) {
+                                TextButton(onClick = { unlockBiometric() }) { Text(stringResource(R.string.fw_vault_biometric_unlock)) }
+                                Text(stringResource(R.string.fw_vault_biometric_explanation), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                } else {
+                    item { ContentRow(stringResource(R.string.fw_redesign_vault_unlocked), stringResource(R.string.fw_redesign_vault_lock_hint), icon = R.drawable.lock_icon_white_24dp,
+                        trailing = { TextButton(onClick = { authEpoch++; cancelBiometric(); VaultSession.lock(); render() }) { Text(stringResource(R.string.fw_lock)) } }) }
+                    item { PrimaryAction(stringResource(R.string.fw_vault_import)) { picker.launch(arrayOf("*/*")) } }
+                    if (pendingUri != null || pendingPath != null) item { ContentRow(stringResource(R.string.fw_vault_import_pending), onClick = { importPending() }) }
+                    if (exportDestination != null && exportName != null) item { ContentRow(stringResource(R.string.fw_vault_export_pending), onClick = { exportPending() }) }
+                    item { SectionTitle(stringResource(R.string.fw_redesign_vault_files)) }
+                    when {
+                        listFailed -> item { EmptyContent(stringResource(R.string.fw_operation_failed), stringResource(R.string.fw_vault_failure)) }
+                        vaultEntries == null -> item { StatusLine(stringResource(R.string.fw_redesign_loading)) }
+                        vaultEntries!!.isEmpty() -> item { EmptyContent(stringResource(R.string.fw_vault_empty), stringResource(R.string.fw_redesign_vault_hint), R.drawable.lock_icon_white_24dp) }
+                        else -> items(vaultEntries!!, key = { it.name }) { entry ->
+                            ContentRow(entry.name, entry.size.asFileSize().formatHumanReadable(this@VaultActivity),
+                                onClick = { openEntry(entry) }, trailing = {
+                                    IconButton(onClick = { showEntryActions(entry) }) {
+                                        Icon(painterResource(R.drawable.more_vertical_icon_control_normal_24dp), stringResource(R.string.fw_redesign_file_actions))
+                                    }
+                                })
+                        }
+                    }
                 }
-                val password = chars.toByteArray(Charsets.UTF_8)
-                input.text?.clear(); confirm?.text?.clear()
-                unlockWithPassword(password, !exists, VaultSession.generation())
             }
-            if (exists && biometricStore.isEnabled()) {
-                button(getString(R.string.fw_vault_biometric_unlock)) { unlockBiometric() }
-                text(getString(R.string.fw_vault_biometric_explanation))
-            }
-            if (!exists) button(getString(R.string.fw_vault_restore)) { restore.launch(arrayOf("application/zip", "application/octet-stream")) }
-            if (exists) button(getString(R.string.fw_vault_backup)) { backup.launch("FileWeave-vault.zip") }
-            return
         }
-        text(getString(R.string.fw_vault_open))
-        button(getString(R.string.fw_lock)) { authEpoch++; cancelBiometric(); VaultSession.lock(); render() }
-        if (biometricStore.isEnabled()) {
-            button(getString(R.string.fw_vault_biometric_disable)) {
-                try { biometricStore.disable(); render() } catch (_: Exception) { biometricUnavailable() }
-            }
-        } else {
-            button(getString(R.string.fw_vault_biometric_enable)) { enrollBiometric() }
-            text(getString(R.string.fw_vault_biometric_explanation))
-        }
-        button(getString(R.string.fw_vault_import)) { picker.launch(arrayOf("*/*")) }
-        if (pendingUri != null || pendingPath != null) button(getString(R.string.fw_vault_import_pending)) { importPending() }
-        button(getString(R.string.fw_vault_backup)) { backup.launch("FileWeave-vault.zip") }
-        if (exportDestination != null && exportName != null) button(getString(R.string.fw_vault_export_pending)) {
-            val destination = exportDestination!!
-            val name = exportName!!
-            work {
+        if (open && !working) {
+            vaultEntries = null; listFailed = false
+            lifecycleScope.launch {
                 try {
-                    contentResolver.openOutputStream(destination)?.use { VaultSession.export("/$name", it) }
-                        ?: throw IOException("Destination unavailable")
-                } catch (e: Exception) {
-                    try { android.provider.DocumentsContract.deleteDocument(contentResolver, destination) } catch (_: Exception) { }
-                    throw e
+                    val entries = withContext(Dispatchers.IO) { VaultSession.list("/") }
+                    if (!VaultSession.isOpen() || busy || epoch != renderEpoch) return@launch
+                    vaultEntries = entries.filter { !it.name.startsWith(".fileweave-import-") }.sortedBy { it.name.lowercase() }
+                } catch (error: Exception) {
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    if (VaultSession.isOpen() && epoch == renderEpoch) listFailed = true
                 }
-                exportDestination = null; exportName = null
-                getString(R.string.fw_vault_export_done)
             }
         }
-        lifecycleScope.launch {
+    }
+
+    private fun exportPending() {
+        val destination = exportDestination ?: return
+        val name = exportName ?: return
+        work {
             try {
-                val entries = withContext(Dispatchers.IO) { VaultSession.list("/") }
-                if (!VaultSession.isOpen() || busy || epoch != renderEpoch) return@launch
-                if (entries.isEmpty()) text(getString(R.string.fw_vault_empty))
-                entries.filter { !it.name.startsWith(".fileweave-import-") }.sortedBy { it.name.lowercase() }.forEach { entry ->
-                    button(entry.name) { openEntry(entry) }.setOnLongClickListener { showEntryActions(entry); true }
-                }
-            } catch (e: Exception) { if (VaultSession.isOpen()) text(getString(R.string.fw_operation_failed)) }
+                contentResolver.openOutputStream(destination)?.use { VaultSession.export("/$name", it) }
+                    ?: throw IOException("Destination unavailable")
+            } catch (e: Exception) {
+                try { android.provider.DocumentsContract.deleteDocument(contentResolver, destination) } catch (_: Exception) { }
+                throw e
+            }
+            exportDestination = null; exportName = null
+            getString(R.string.fw_vault_export_done)
         }
     }
 

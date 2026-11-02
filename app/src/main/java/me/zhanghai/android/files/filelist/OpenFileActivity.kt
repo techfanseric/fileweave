@@ -34,7 +34,12 @@ class OpenFileActivity : AppActivity() {
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     private fun openFile(path: Path, mimeType: MimeType) {
-        if (mimeType.type == "video" && !path.isArchivePath) {
+        val extension = path.fileName.toString().substringAfterLast('.', "").lowercase()
+        if (!path.isArchivePath && (extension in setOf("txt", "md", "xml", "log", "html", "htm"))) {
+            startActivitySafe(Intent(this, me.zhanghai.android.files.viewer.text.TextEditorActivity::class.java).apply { extraPath = path; putExtra(me.zhanghai.android.files.viewer.text.TextEditorActivity.EXTRA_PREVIEW, true) })
+        } else if (!path.isArchivePath && (extension == "pdf" || mimeType.value == "application/pdf")) {
+            startActivitySafe(Intent(this, me.zhanghai.android.files.viewer.document.PdfViewerActivity::class.java).apply { extraPath = path })
+        } else if (mimeType.type == "video" && !path.isArchivePath) {
             startActivitySafe(Intent(this, me.zhanghai.android.files.viewer.video.VideoViewerActivity::class.java)
                 .setType(mimeType.value).apply { extraPath = path })
         } else if (path.isArchivePath) {

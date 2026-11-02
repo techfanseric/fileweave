@@ -37,15 +37,15 @@ public enum ASR {
     /// 给用户看的缺失说明，能区分「没装」和「脚本丢了」
     public static var unavailableReason: String? {
         guard FileManager.default.isExecutableFile(atPath: python.path) else {
-            return "未安装转录环境，请运行 setup-asr.sh。"
+            return L("未安装转录环境，请运行 setup-asr.sh。")
         }
-        guard script != nil else { return "转录脚本缺失" }
+        guard script != nil else { return L("转录脚本缺失") }
         let model = supportDir.appendingPathComponent("models/sherpa-onnx-paraformer-zh-2023-03-28")
         guard FileManager.default.fileExists(atPath: model.appendingPathComponent("tokens.txt").path),
               ["model.int8.onnx", "model.onnx"].contains(where: {
                   FileManager.default.fileExists(atPath: model.appendingPathComponent($0).path)
-              }) else { return "识别模型未安装完整，请运行 setup-asr.sh。" }
-        guard FileManager.default.isExecutableFile(atPath: ffmpeg) else { return "请先安装 ffmpeg" }
+              }) else { return L("识别模型未安装完整，请运行 setup-asr.sh。") }
+        guard FileManager.default.isExecutableFile(atPath: ffmpeg) else { return L("请先安装 ffmpeg") }
         return nil
     }
 
@@ -65,7 +65,7 @@ public enum ASR {
             timeout: 600
         )
         guard FileManager.default.fileExists(atPath: output.path) else {
-            throw ASRError.ffmpegFailed("未生成 wav")
+            throw ASRError.ffmpegFailed(L("未生成 wav"))
         }
     }
 
@@ -101,7 +101,7 @@ public enum ASR {
         guard isInstalled else { throw ASRError.notInstalled }
         guard let script else { throw ASRError.scriptMissing }
 
-        var args = [script.path, wav.path, txtOut.path, "--model", model]
+        var args = [script.path, wav.path, txtOut.path, "--model", model, "--language", AppLanguage.selectedCode]
         if speakers > 0 { args += ["--speakers", "\(speakers)"] }
 
         // 模型首次加载可能十几秒，之后按经验值估进度：
@@ -181,10 +181,10 @@ public enum ASR {
 
         public var errorDescription: String? {
             switch self {
-            case .notInstalled: return "转录环境未安装"
-            case .scriptMissing: return "转录脚本缺失（app 安装不完整）"
-            case .noOutput: return "转录没有产出结果"
-            case .ffmpegFailed(let m): return "音频转换失败：\(m)"
+            case .notInstalled: return L("转录环境未安装")
+            case .scriptMissing: return L("转录脚本缺失（app 安装不完整）")
+            case .noOutput: return L("转录没有产出结果")
+            case .ffmpegFailed(let m): return L("音频转换失败：{0}", m)
             case .transcribeFailed(let m): return m
             }
         }
@@ -218,13 +218,13 @@ public enum ASR {
                 do { try p.run() } catch {
                     try? o.fileHandleForWriting.close()
                     try? e.fileHandleForWriting.close()
-                    cont.resume(throwing: ASRError.transcribeFailed("无法启动 \(exe): \(error.localizedDescription)"))
+                    cont.resume(throwing: ASRError.transcribeFailed(L("无法启动 {0}: {1}", exe, error.localizedDescription)))
                     return
                 }
                 if group.wait(timeout: .now() + timeout) == .timedOut {
                     p.terminate()
                     _ = group.wait(timeout: .now() + 3)
-                    cont.resume(throwing: ASRError.transcribeFailed("命令超时"))
+                    cont.resume(throwing: ASRError.transcribeFailed(L("命令超时")))
                     return
                 }
                 p.waitUntilExit()
@@ -315,7 +315,7 @@ public enum ASR {
                 try? o.fileHandleForWriting.close()
                 try? e.fileHandleForWriting.close()
                 ticker.cancel()
-                cont.resume(throwing: ASRError.transcribeFailed("无法启动: \(error.localizedDescription)"))
+                cont.resume(throwing: ASRError.transcribeFailed(L("无法启动: {0}", error.localizedDescription)))
                 return
             }
 

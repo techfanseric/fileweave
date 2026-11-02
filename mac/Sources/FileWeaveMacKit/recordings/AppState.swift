@@ -13,10 +13,10 @@ public enum LinkState: Equatable {
 
     public var title: String {
         switch self {
-        case .checking: return "正在检查…"
+        case .checking: return L("正在检查…")
         case .ready(let s): return s.name
-        case .reconnecting: return "正在重新连接…"
-        case .noDevice: return "手机未连接"
+        case .reconnecting: return L("正在重新连接…")
+        case .noDevice: return L("手机未连接")
         case .failed(let m): return m
         }
     }
@@ -26,11 +26,11 @@ public enum LinkState: Equatable {
     public var hint: String? {
         switch self {
         case .noDevice:
-            return "手机和这台 Mac 连同一网络，在手机 FileWeave 里与 Mac 配对，并打开共享文件夹"
+            return L("手机和这台 Mac 连同一网络，在手机 FileWeave 里与 Mac 配对，并打开共享文件夹")
         case .reconnecting:
             // 之前这一档返回 nil，于是那八九秒里界面只有一行标题，
             // 既没说在等什么、也没说等不到该怎么办。
-            return "正在重新找配对的手机——找到了会自己连上"
+            return L("正在重新找配对的手机——找到了会自己连上")
         default: return nil
         }
     }
@@ -53,9 +53,9 @@ public enum GroupMode: String, CaseIterable, Identifiable {
     public var id: String { rawValue }
     var label: String {
         switch self {
-        case .time: return "按时间"
-        case .number: return "按号码"
-        case .contact: return "按对象"
+        case .time: return L("按时间")
+        case .number: return L("按号码")
+        case .contact: return L("按对象")
         }
     }
 }
@@ -66,15 +66,15 @@ public enum Purpose {
 
     var title: String {
         switch self {
-        case .download: return "选择保存位置"
-        case .transcribe: return "转录结果保存位置"
+        case .download: return L("选择保存位置")
+        case .transcribe: return L("转录结果保存位置")
         }
     }
 
     var prompt: String {
         switch self {
-        case .download: return "下载到此处"
-        case .transcribe: return "转录到此处"
+        case .download: return L("下载到此处")
+        case .transcribe: return L("转录到此处")
         }
     }
 
@@ -93,7 +93,17 @@ public final class AppState: ObservableObject {
     // MARK: 对外状态
 
     @Published public private(set) var link: LinkState = .checking
+    /// 最近一轮「为什么没连上」的判定（连上时清空）。提示区据此把
+    /// 「手机不在线」和「配对失效」分开说，而不是都叫「未连接」。
+    @Published public private(set) var linkDiagnosis: FolderLinkDiagnosis?
     @Published public private(set) var recordings: [Recording] = []
+    @Published private(set) var storageSample: PhoneStorageSample?
+    @Published private(set) var storageSamples: [PhoneStorageSample] = []
+    @Published private(set) var storageDeviceName: String?
+    @Published private(set) var storageDeviceID: String?
+    @Published private(set) var storageIsCurrent = false
+    @Published private(set) var storageMessage = L("连接手机后读取容量")
+    private var storageHistory = PhoneStorageHistory()
 
     /// 手机回收站里的录音。每轮扫描现读现用，本机不留副本，
     /// 所以在手机上还原 / 清空之后这里一定跟着变，不会出现假状态。
@@ -120,6 +130,25 @@ public final class AppState: ObservableObject {
 
     /// remotePath → 正在转录
     @Published private(set) var transcribing: Set<String> = []
+
+    /// 菜单栏只提示已经开始的录音下载或转录；手机推送文件尚无统一进度事件。
+    @Published public private(set) var fileTransferTitle: String?
+    private var cancelFileTransferAction: (() -> Void)?
+    public var hasActiveTask: Bool { fileTransferTitle != nil || !downloading.isEmpty || !transcribing.isEmpty }
+    func beginFileTransfer(_ title: String, cancel: @escaping () -> Void) {
+        fileTransferTitle = title; cancelFileTransferAction = cancel
+    }
+    public func cancelFileTransfer() { cancelFileTransferAction?() }
+    func finishFileTransfer(_ message: String?, failed: Bool) {
+        fileTransferTitle = nil; cancelFileTransferAction = nil
+        note(message, isError: failed)
+    }
+    public var activeTaskTitle: String? {
+        if let fileTransferTitle { return fileTransferTitle }
+        if !transcribing.isEmpty { return L("正在转录录音") }
+        if !downloading.isEmpty { return L("正在下载录音") }
+        return nil
+    }
 
     /// remotePath → 进度 0…1（估算值，实时推断会有跳动）
     @Published private(set) var transcriptProgress: [String: Double] = [:]
@@ -195,11 +224,22 @@ public final class AppState: ObservableObject {
     /// 这句必须真的被视图读到（disconnectedState 在用），
     /// 不能只写在状态枚举里没人渲染 —— 之前就犯过这个错，
     /// 正好在最需要指引的时候界面什么都不说。
-    public var linkHint: String? { link.hint }
+    ///
+    /// 「手机未连接」这一档按最近的诊断结果细化：原因不同，
+    /// 用户该做的事完全不同（去开手机 vs 重新配对）。
+    public var linkHint: String? {
+        if case .noDevice = link, let diagnosis = linkDiagnosis {
+            return diagnosis.hint
+        }
+        return link.hint
+    }
 
     /// 当前在用的通道。每轮先验它还活着，死了才重新发现，
     /// 免得每一轮都重新广播探测，「这一轮是谁扫的」始终确定。
+    private var usesPreviewData = false
+    private var languageObserver: NSObjectProtocol?
     private var source: RecordingSource?
+    @Published public private(set) var recordingsSharingEnabled = true
 
     public var newCount: Int { library.newlySeen(in: recordings).count }
 
@@ -233,33 +273,58 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
 
     // MARK: 生命周期
 
-    public init() {
+    public convenience init() { self.init(previewOnly: false) }
+
+    init(previewOnly: Bool) {
         let saved = UserDefaults.standard.double(forKey: Keys.interval)
         pollInterval = saved > 0 ? saved : 30
 
         let savedAI = UserDefaults.standard.object(forKey: Keys.aiSummary) as? Bool
         aiSummaryEnabled = savedAI ?? true
 
+        languageObserver = NotificationCenter.default.addObserver(forName: .fileWeaveLanguageChanged, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.infoText = self.infoText.map(LocalizedText.refresh)
+                self.errorText = self.errorText.map(LocalizedText.refresh)
+                self.storageMessage = LocalizedText.refresh(self.storageMessage)
+                self.fileTransferTitle = self.fileTransferTitle.map(LocalizedText.refresh)
+                if case .failed(let message) = self.link { self.link = .failed(LocalizedText.refresh(message)) }
+            }
+        }
+
         if let p = UserDefaults.standard.string(forKey: Keys.lastDir) {
             lastPickedDir = URL(fileURLWithPath: p)
         }
+
+        #if DEBUG
+        usesPreviewData = previewOnly || DebugPreview.isEnabled
+        if usesPreviewData { configurePreview(); return }
+        #endif
 
         // 荣耀录音监视器时代的库 / 转录 / ASR 环境整体搬到 FileWeave 目录。
         // 必须赶在 Library.load() 之前。
         Library.migrateLegacyStoreIfNeeded()
 
         library = Library.load()
+        if let id = storageHistory.activeDeviceID, let device = storageHistory.devices[id] {
+            storageDeviceID = id
+            storageDeviceName = device.name
+            storageSamples = device.samples
+            storageSample = device.samples.last
+            if storageSample != nil { storageMessage = "" }
+        }
         transcripts = library.transcripts
         transcriptText = Self.loadTranscriptText(from: library)
         searchHistory = loadHistory()
-        NSLog("索引诊断: 库内转录 %d 条，可索引正文 %d 份（目录 %@）",
+        NSLog(L("索引诊断: 库内转录 %d 条，可索引正文 %d 份（目录 %@）"),
               library.transcripts.count, transcriptText.count,
               Library.directory.appendingPathComponent("transcripts").path)
         // 清掉指向已删除文件的陈旧记录
         let pruned = library.pruneMissingTranscripts()
         if pruned > 0 {
             transcripts = library.transcripts
-            NSLog("已清理 %d 条失效的转录记录", pruned)
+            NSLog(L("已清理 %d 条失效的转录记录"), pruned)
         }
         // 紧接着补回「文件还在、索引没了」的。
         // 必须排在 prune 之后：prune 误删的这里立刻补回来，
@@ -283,6 +348,7 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
     }
 
     public func start() {
+        if usesPreviewData { return }
         installEnvironmentWatchers()
         pollTask?.cancel()
         pollTask = Task { [weak self] in
@@ -354,7 +420,7 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
                 self.lastPathSatisfied = satisfied
                 // 只在「恢复」那一下动作；首次回调（本来就是通的）与持续在线都跳过
                 guard satisfied, !was else { return }
-                NSLog("网络路径恢复，稍候自动重扫")
+                NSLog(L("网络路径恢复，稍候自动重扫"))
                 self.settleThenRefresh(after: 2.0)
             }
         }
@@ -418,17 +484,19 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
 
         // 丢到后台线程：发现 + 逐台 TLS 探测都是秒级网络活，
         // 放主线程上会把菜单栏面板卡住不动。
-        let found = await Task.detached(priority: .utility) {
-            FileWeaveFolderSource.discoverPaired()
+        let outcome = await Task.detached(priority: .utility) {
+            FileWeaveFolderSource.discoverPairedWithDiagnosis()
         }.value
 
-        if let made = found {
+        if let made = outcome.source {
             // 连着呢，过去的失败一笔勾销 —— 重开共享文件夹、换网段都算新的开始
             reconnectFailures = 0
+            linkDiagnosis = nil
             source = made
-            NSLog("已连上配对设备：%@（%@）", made.identity, made.detail)
+            NSLog(L("已连上配对设备：%@（%@）"), made.identity, made.detail)
             return made
         }
+        linkDiagnosis = outcome.diagnosis
         reconnectFailures += 1
         throw SourceError.noSource
     }
@@ -459,8 +527,9 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
     /// 记时刻，成功轮询只清「过了期的」—— 绕过这个出口直接给 `errorText`
     /// 赋值，`messageAt` 就是 nil，`expireStaleMessage` 永远清不掉它，
     /// 提示会卡死在底栏（实测：连接恢复之后错误还挂着，就是这个原因）。
-    private func note(_ message: String?) {
-        errorText = message
+    private func note(_ message: String?, isError: Bool = true) {
+        if isError { errorText = message }
+        else { infoText = message; errorText = nil }
         messageAt = message == nil ? nil : Date()
     }
 
@@ -512,6 +581,7 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
     }
 
     public func refresh() async {
+        if usesPreviewData { return }
         guard !scanning else { return }
         scanning = true
         defer { scanning = false }
@@ -519,6 +589,7 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
         do {
             let current = try await resolveSource()
             link = .ready(SourceInfo(name: current.displayName, detail: current.detail))
+            await refreshStorage(using: current)
 
             // 一轮扫描同时拿在位和回收站（/v1/tree 一次返回全部）。
             // 扫描失败时上面已经整轮抛错、界面沿用上一轮，不存在「回收站这一半失败」的中间态。
@@ -532,6 +603,7 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
             // 目录已经全对上时它扫一遍就返回，几乎不花开销。
             applyRebuiltTranscripts(liveRemotePaths: snap.live.map(\.remotePath))
             await syncTranscripts(using: current, recordings: snap.live + snap.trash)
+            recordingsSharingEnabled = snap.recordingsEnabled
             let live = snap.live
             let livePaths = Set(live.map(\.remotePath))
             // 原位置已经又有同名文件，说明手机上现在是两份。
@@ -556,7 +628,7 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
             expireStaleMessage()
 
             // 每轮一行，方便对着手机现场核对到底是哪边不同步
-            NSLog("SYNC 正常 %d 条 · 手机回收站 %d 条",
+            NSLog(L("SYNC 正常 %d 条 · 手机回收站 %d 条"),
                   recordings.count, trashRecordings.count)
 
             // 扫描默认**不出声**。
@@ -570,20 +642,56 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
             // 只留一种：用户在手机上把回收站里的东西还原了。
             // 那是用户在 App 之外做的动作，界面得跟上，不然他会以为删错了。
             infoText = backHome.isEmpty ? nil
-                : (backHome.count == 1 ? "手机上还原了 1 条"
-                                       : "手机上还原了 \(backHome.count) 条")
+                : (backHome.count == 1 ? L("手机上还原了 1 条")
+                                       : L("手机上还原了 {0} 条", backHome.count))
         } catch let e as SourceError {
             if case .noSource = e {
                 link = .noDevice
             } else {
-                link = .failed("连接异常")
+                link = .failed(L("连接异常"))
                 note(e.localizedDescription)
             }
             infoText = nil
         } catch {
-            link = .failed("未知错误")
+            link = .failed(L("未知错误"))
             note(error.localizedDescription)
             infoText = nil
+        }
+    }
+
+    private func refreshStorage(using current: RecordingSource) async {
+        let id = current.storageIdentity
+        // Switch the whole series together; equal display names must never merge two phones.
+        storageDeviceName = current.displayName
+        if storageDeviceID != id {
+            storageDeviceID = id
+            storageSamples = storageHistory.devices[id]?.samples ?? []
+            storageSample = storageSamples.last
+            storageIsCurrent = false
+        }
+        do {
+            guard let capacity = try await Task.detached(priority: .utility, operation: {
+                try current.storageCapacity()
+            }).value else {
+                storageMessage = L("手机暂未提供容量，请更新手机端")
+                storageIsCurrent = false
+                return
+            }
+            guard !Task.isCancelled else { return }
+            let now = Date()
+            storageSample = PhoneStorageSample(date: now, capacity: capacity)
+            storageIsCurrent = true
+            storageMessage = ""
+            do {
+                try storageHistory.record(capacity, deviceID: id, name: current.displayName, at: now)
+                storageSamples = storageHistory.devices[id]?.samples ?? []
+            } catch {
+                storageMessage = L("历史记录保存失败")
+                NSLog(L("存储历史保存失败：%@"), error.localizedDescription)
+            }
+        } catch {
+            storageMessage = L("容量读取失败，稍后自动重试")
+            storageIsCurrent = false
         }
     }
 
@@ -632,7 +740,7 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
         }
         let targets = untranscribed
         guard !targets.isEmpty else {
-            infoText = "全部都已转录过"
+            infoText = L("全部都已转录过")
             return
         }
         for rec in targets {
@@ -729,7 +837,7 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
                     library.markDownloaded(rec.id, localPath: pulled.path)
                 } catch {
                     failures += 1
-                    note("「\(rec.subject)」下载失败：\(error.localizedDescription)")
+                    note(L("「{0}」下载失败：{1}", rec.subject, error.localizedDescription))
                 }
                 downloading.remove(rec.id)
                 selection.remove(rec.id)
@@ -738,7 +846,7 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
 
             if failures == 0 {
                 note(nil)
-                infoText = "已保存 \(pending.count) 个到 \(directory.lastPathComponent)"
+                infoText = L("已保存 {0} 个到 {1}", pending.count, directory.lastPathComponent)
             }
         } catch {
             for r in pending { downloading.remove(r.id) }
@@ -785,7 +893,7 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
 
     /// 各类录音数量，用于筛选按钮上的计数
     public var kindCounts: [(kind: RecordingKind?, label: String, count: Int)] {
-        var base: [(RecordingKind?, String, Int)] = [(nil, "全部", visibleRecordings.count)]
+        var base: [(RecordingKind?, String, Int)] = [(nil, L("全部"), visibleRecordings.count)]
         for k in RecordingKind.allCases where k != .other {
             base.append((k, k.label, visibleRecordings.filter { $0.kind == k }.count))
         }
@@ -840,8 +948,8 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
             return groups.keys.sorted(by: >).compactMap { day in
                 guard let items = groups[day] else { return nil }
                 let title: String
-                if cal.isDateInToday(day) { title = "今天" }
-                else if cal.isDateInYesterday(day) { title = "昨天" }
+                if cal.isDateInToday(day) { title = L("今天") }
+                else if cal.isDateInYesterday(day) { title = L("昨天") }
                 else { title = Fmt.monthDay.string(from: day) }
                 let sortKey: (Recording) -> Date = showTrashOnly
                     ? { $0.movedAt ?? $0.displayTime }
@@ -855,7 +963,7 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
             // 通话按真实号码归组，微信/录音机等没有号码的归到「非号码」
             let groups = Dictionary(grouping: rows) { rec -> String in
                 let digits = rec.subject.filter { $0.isNumber }
-                return (rec.kind == .call && !digits.isEmpty) ? digits : "非号码（\(rec.kind.label)）"
+                return (rec.kind == .call && !digits.isEmpty) ? digits : L("非号码（{0}）", rec.kind.label)
             }
             return groups.keys.sorted().compactMap { key in
                 guard let items = groups[key] else { return nil }
@@ -869,7 +977,7 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
                 guard let items = groups[key] else { return nil }
                 let n = items.count
                 return Section(id: key,
-                               title: n > 1 ? "\(key) · \(n) 条" : key,
+                               title: n > 1 ? L("{0} · {1} 条", key, n) : key,
                                rows: items.sorted { $0.displayTime > $1.displayTime })
             }
         }
@@ -884,7 +992,7 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
             library.removeTranscript(rec.id)
             transcripts = library.transcripts
             objectWillChange.send()
-            note("转录文件已不在原位置：\(url.lastPathComponent)")
+            note(L("转录文件已不在原位置：{0}", url.lastPathComponent))
             return
         }
         if let doc = TranscriptDocument.parse(remotePath: rec.id,
@@ -905,7 +1013,7 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
     public func trash(_ rec: Recording, alsoRemoveLocal: Bool) async {
         guard !trashing.contains(rec.id) else { return }
         trashing.insert(rec.id)
-        infoText = "正在删除「\(rec.subject)」…"
+        infoText = L("正在删除「{0}」…", rec.subject)
         defer { trashing.remove(rec.id) }
 
         do {
@@ -941,10 +1049,10 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
             selection.remove(rec.id)
 
             note(nil)
-            infoText = "「\(rec.subject)」已移入手机回收站，可恢复"
+            infoText = L("「{0}」已移入手机回收站，可恢复", rec.subject)
         } catch {
-            NSLog("删除失败 %@: %@", rec.subject, String(describing: error))
-            note("「\(rec.subject)」删除失败：\(error.localizedDescription)")
+            NSLog(L("删除失败 %@: %@"), rec.subject, String(describing: error))
+            note(L("「{0}」删除失败：{1}", rec.subject, error.localizedDescription))
         }
     }
 
@@ -979,7 +1087,7 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
     /// 此时直接说清楚并重新扫一遍，不做一次注定失败的还原请求。
     public func restoreFromTrash(_ rec: Recording) async {
         guard let from = rec.trashPath else {
-            note("这条已经不在手机回收站里了")
+            note(L("这条已经不在手机回收站里了"))
             await refresh()
             return
         }
@@ -997,10 +1105,10 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
             trashRecordings.removeAll { $0.id == rec.id }
             selection.remove(rec.id)
             note(nil)
-            infoText = "「\(rec.subject)」已从手机回收站还原"
+            infoText = L("「{0}」已从手机回收站还原", rec.subject)
             await refresh()
         } catch {
-            note("还原失败：\(error.localizedDescription)")
+            note(L("还原失败：{0}", error.localizedDescription))
         }
     }
 
@@ -1043,7 +1151,7 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
 
         transcripts = library.transcripts
         transcriptText = Self.loadTranscriptText(from: library)
-        NSLog("转录索引已重建：%d 条（正文 %d 份）",
+        NSLog(L("转录索引已重建：%d 条（正文 %d 份）"),
               transcripts.count, transcriptText.count)
     }
 
@@ -1053,7 +1161,7 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
             guard rec.txtPath.hasSuffix(".txt") else { continue }
             guard let text = try? String(contentsOf: URL(fileURLWithPath: rec.txtPath),
                                          encoding: .utf8) else {
-                NSLog("索引跳过（读不出）: %@", rec.txtPath)
+                NSLog(L("索引跳过（读不出）: %@"), rec.txtPath)
                 continue
             }
             out[path] = text
@@ -1254,7 +1362,7 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
     public func generateSummary(for rec: Recording, txtURL: URL) {
         guard let cfg = SummaryService.loadConfig(from: SummaryService.defaultCredentialPath(),
                                                  model: AppState.defaultSummaryModel) else {
-            NSLog("摘要跳过：找不到百炼凭据（%@）",
+            NSLog(L("摘要跳过：找不到百炼凭据（%@）"),
                   SummaryService.defaultCredentialPath().path)
             return
         }
@@ -1272,7 +1380,7 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
                     $0.summarizing = false
                 }
             } catch {
-                NSLog("摘要失败: %@", String(describing: error))
+                NSLog(L("摘要失败: %@"), String(describing: error))
                 library.updateTranscript(rec.id) { $0.summarizing = false }
             }
             transcripts[rec.id] = library.transcript(for: rec.id)
@@ -1307,8 +1415,8 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
 
     public func speakerHintText(for rec: Recording) -> String {
         switch defaultSpeakerHint(for: rec) {
-        case 0: return "自动判断"
-        case let n: return "\(n) 人"
+        case 0: return L("自动判断")
+        case let n: return L("{0} 人", n)
         }
     }
 
@@ -1346,7 +1454,7 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
         panel.canChooseFiles = false
         panel.canCreateDirectories = true
         panel.allowsMultipleSelection = false
-        panel.prompt = "选择"
+        panel.prompt = L("选择")
         panel.directoryURL = transcriptFolder
         if panel.runModal() == .OK, let url = panel.url {
             transcriptFolder = url
@@ -1393,7 +1501,7 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
         transcribing.insert(rec.id)
         transcriptProgress[rec.id] = 0
         phases[rec.id] = .fetching
-        infoText = "正在从手机取「\(rec.subject)」…"
+        infoText = L("正在从手机取「{0}」…", rec.subject)
         defer {
             transcribing.remove(rec.id)
             transcriptProgress[rec.id] = nil
@@ -1409,10 +1517,10 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
                    Self.isRetryableTranscriptionError(error),
                    !Task.isCancelled {
                     let delay = Self.retryDelay(afterAttempt: attempt)
-                    NSLog("转录失败（第 %d/%d 次）%@: %@，%d 秒后重试",
+                    NSLog(L("转录失败（第 %d/%d 次）%@: %@，%d 秒后重试"),
                           attempt, Self.transcribeMaxAttempts,
                           rec.subject, String(describing: error), Int(delay))
-                    note("「\(rec.subject)」失败：\(error.localizedDescription)，\(Int(delay)) 秒后自动重试")
+                    note(L("「{0}」失败：{1}，{2} 秒后自动重试", rec.subject, error.localizedDescription, Int(delay)))
                     try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
                     guard !Task.isCancelled else { break }
                     // 从头再来。取音频那步会复用已有副本，不会重复下载。
@@ -1420,8 +1528,8 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
                     transcriptProgress[rec.id] = 0
                     continue
                 }
-                NSLog("转录失败 %@: %@", rec.subject, String(describing: error))
-                note("「\(rec.subject)」转录失败：\(error.localizedDescription)")
+                NSLog(L("转录失败 %@: %@"), rec.subject, String(describing: error))
+                note(L("「{0}」转录失败：{1}", rec.subject, error.localizedDescription))
                 // 失败时不留下半成品 txt
                 let stem = (rec.fileName as NSString).deletingPathExtension
                 let junk = dir.appendingPathComponent("\(stem).txt")
@@ -1442,7 +1550,7 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
         let audioSource: URL
         if let existing = libraryPath(for: rec), FileManager.default.fileExists(atPath: existing.path) {
             audioSource = existing
-            infoText = "复用已有音频「\(rec.subject)」"
+            infoText = L("复用已有音频「{0}」", rec.subject)
         } else {
             let dest = destination(for: rec, in: dir)
             downloading.insert(rec.id)
@@ -1465,12 +1573,12 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
         let stem = (rec.fileName as NSString).deletingPathExtension
         let wav = workDir.appendingPathComponent("\(stem).wav")
         phases[rec.id] = .converting
-        infoText = "正在转换音频格式…"
+        infoText = L("正在转换音频格式…")
         try await ASR.convertToWav(input: audioSource, output: wav)
 
         let txtOut = dir.appendingPathComponent("\(stem).txt")
         phases[rec.id] = .transcribing
-        infoText = "正在转录「\(rec.subject)」…"
+        infoText = L("正在转录「{0}」…", rec.subject)
 
         let outcome = try await ASR.transcribe(
             wav: wav,
@@ -1478,9 +1586,7 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
             speakers: spk,
             onMeta: { [weak self] dur in
                 Task { @MainActor in
-                    self?.infoText = String(
-                        format: "正在转录「%@」…（音频 %.0f 秒）",
-                        rec.subject, dur)
+                    self?.infoText = L("正在转录「{0}」…（音频 {1} 秒）", rec.subject, Int(dur.rounded()))
                 }
             },
             onProgress: { [weak self] p in
@@ -1529,7 +1635,7 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
         }
 
         note(nil)
-        infoText = "「\(rec.subject)」转录完成 · \(outcome.sentenceCount) 句 / \(outcome.speakerCount) 人"
+        infoText = L("「{0}」转录完成 · {1} 句 / {2} 人", rec.subject, outcome.sentenceCount, outcome.speakerCount)
         // 转录完直接把内容摊开，用户点一下就想看结果
         openTranscript(rec)
     }
@@ -1552,20 +1658,57 @@ public func notifyPanelOpened() { panelOpenToken &+= 1 }
     public var lastDirDisplay: String {
         guard let last = lastPickedDir else { return "" }
         let shown = last.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
-        return FileManager.default.fileExists(atPath: last.path) ? "上次存到 \(shown)" : "\(shown)（已不存在）"
+        return FileManager.default.fileExists(atPath: last.path) ? L("上次存到 {0}", shown) : L("{0}（已不存在）", shown)
     }
 
     public func copyDiagnostic() {
-        let text = """
-        设备: \(link.title)
-        上次选择目录: \(lastPickedDir?.path ?? "尚未选择")
-        已选: \(selection.count)
-        文件数: \(recordings.count)
-        新增标记: \(newCount)
-        库文件: \(Library.fileURL.path)
-        """
+        let text = L("设备: {0}\n上次选择目录: {1}\n已选: {2}\n文件数: {3}\n新增标记: {4}\n库文件: {5}", link.title, lastPickedDir?.path ?? L("尚未选择"), selection.count, recordings.count, newCount, Library.fileURL.path)
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(text, forType: .string)
     }
 }
+
+#if DEBUG
+extension AppState {
+    private func configurePreview() {
+        let now = Date()
+        link = DebugPreview.mode == "offline" ? .noDevice : .ready(SourceInfo(name: ProcessInfo.processInfo.environment["SNAPSHOT_DEVICE_NAME"] ?? "Preview Phone", detail: "Synthetic screenshot data"))
+        storageDeviceID = "preview-only"
+        storageDeviceName = "Preview Phone"
+        storageSamples = (0..<24).map { index in
+            PhoneStorageSample(date: now.addingTimeInterval(Double(index - 23) * 3600),
+                capacity: PhoneStorageCapacity(volume: "primary", totalBytes: 256_000_000_000,
+                    availableBytes: 128_000_000_000 - Int64(index) * 245_000_000))
+        }
+        storageSample = storageSamples.last
+        storageIsCurrent = DebugPreview.mode != "offline"
+        storageMessage = ""
+        if DebugPreview.mode == "offline" || DebugPreview.mode == "empty" { return }
+        let names = ["CallRecord/通话-Alex-202611011400.m4a", "Recorder/Project planning — weekly review.m4a",
+                     "WeChat/微信-设计讨论-202611011030.m4a", "Recorder/A very long recording filename with notes from the research and product planning meeting.m4a"]
+        recordings = names.enumerated().compactMap { index, name in
+            Recording(remotePath: name, size: Int64(index + 1) * 3_450_000,
+                      modifiedAt: now.addingTimeInterval(-Double(index) * 3600))
+        }
+        lastScanAt = now
+        if let first = recordings.first {
+            transcripts[first.id] = TranscriptRecord(txtPath: "/tmp/fileweave-preview-transcript.txt", sentenceCount: 18,
+                speakerCount: 2, model: "Paraformer", audioDuration: 180, inferSeconds: 24, createdAt: now,
+                preview: "Review next week's prototype and confirm the testing schedule.")
+        }
+        if DebugPreview.mode == "busy", let last = recordings.last {
+            transcribing.insert(last.id); transcriptProgress[last.id] = 0.56
+            infoText = L("正在转录录音")
+        }
+        if DebugPreview.mode == "failure" { errorText = L("手机不在线：确认手机 FileWeave 在运行、共享文件夹开着，且和这台 Mac 连的是同一个 Wi-Fi") }
+        if DebugPreview.mode == "transcript", let first = recordings.first {
+            reading = TranscriptDocument(remotePath: first.id, title: first.subject, duration: "00:03:00", generatedAt: "",
+                model: "Paraformer", summary: "", segments: [
+                    TranscriptSegment(start: "00:00", end: "00:12", speaker: "1", text: "Let's review the prototype and agree on the next round of testing."),
+                    TranscriptSegment(start: "00:12", end: "00:24", speaker: "2", text: "原始转录内容保持原样，不随界面语言改变。")
+                ], txtURL: URL(fileURLWithPath: "/tmp/fileweave-preview-transcript.txt"))
+        }
+    }
+}
+#endif

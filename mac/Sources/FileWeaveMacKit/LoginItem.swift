@@ -94,7 +94,7 @@ public final class LoginItem: ObservableObject {
     ///   失败再落兜底。显式指定是给「想验另一条路」用的。
     public func setEnabled(_ on: Bool, prefer: Backend? = nil) {
         guard isRealBundle else {
-            lastError = "当前不是安装后的 app，无法注册登录项"
+            lastError = L("当前不是安装后的 app，无法注册登录项")
             return
         }
         do {
@@ -141,7 +141,7 @@ public final class LoginItem: ObservableObject {
                 return
             } catch {
                 throw LoginItemError.serviceUnavailable(
-                    "系统登录项注册失败：\(error.localizedDescription)")
+                    L("系统登录项注册失败：{0}", error.localizedDescription))
             }
         }
 
@@ -150,7 +150,7 @@ public final class LoginItem: ObservableObject {
             noteServiceResult(service)
         } catch {
             // ad-hoc 签名下常见的失败，落兜底而不是把开关变成哑巴
-            NSLog("LOGIN ITEM: ServiceManagement 注册失败(%@)，改用 LaunchAgent",
+            NSLog(L("LOGIN ITEM: ServiceManagement 注册失败(%@)，改用 LaunchAgent"),
                   String(describing: error))
             let serviceMessage = error.localizedDescription
             do {
@@ -159,7 +159,7 @@ public final class LoginItem: ObservableObject {
                 isEnabled = true
             } catch {
                 throw LoginItemError.serviceUnavailable(
-                    "系统登录项注册失败（\(serviceMessage)），兜底方式也失败：\(error.localizedDescription)")
+                    L("系统登录项注册失败（{0}），兜底方式也失败：{1}", serviceMessage, error.localizedDescription))
             }
         }
     }
@@ -169,7 +169,7 @@ public final class LoginItem: ObservableObject {
         isEnabled = service.status == .enabled
         // 注册成功但等用户点允许，也是一种「没真开起来」
         if service.status == .requiresApproval {
-            lastError = "需要到「系统设置 → 通用 → 登录项」里允许它"
+            lastError = L("需要到「系统设置 → 通用 → 登录项」里允许它")
         }
     }
 
@@ -207,7 +207,7 @@ public final class LoginItem: ObservableObject {
             try plist.write(to: url, options: .atomic)
         } catch {
             throw LoginItemError.agentNotLoaded(
-                "写 LaunchAgent 失败：\(error.localizedDescription)")
+                L("写 LaunchAgent 失败：{0}", error.localizedDescription))
         }
         // bootstrap 让它这次就装上；已经装过的话 bootout 后重装。
         // 只写文件不加载，开机那一下之外它是不生效的。
@@ -217,11 +217,11 @@ public final class LoginItem: ObservableObject {
             if !launchctl(["bootstrap", target, url.path]).ok {
                 let out = launchctl(["print", "\(target)/\(Self.label)"]).out
                 throw LoginItemError.agentNotLoaded(
-                    "launchctl 装不上 LaunchAgent：\(out.trimmingCharacters(in: .whitespacesAndNewlines))")
+                    L("launchctl 装不上 LaunchAgent：{0}", out.trimmingCharacters(in: .whitespacesAndNewlines)))
             }
         }
         guard isAgentLoaded() else {
-            throw LoginItemError.agentNotLoaded("LaunchAgent 已写入但 launchctl 没装上")
+            throw LoginItemError.agentNotLoaded(L("LaunchAgent 已写入但 launchctl 没装上"))
         }
     }
 

@@ -70,12 +70,6 @@ object Settings {
     val CREATE_ARCHIVE_TYPE: SettingLiveData<Int> =
         ResourceIdSettingLiveData(R.string.pref_key_create_archive_type, R.id.zipRadio)
 
-    val BRIDGE_AUTO_CONNECT: SettingLiveData<Boolean> =
-        BooleanSettingLiveData(
-            R.string.pref_key_bridge_auto_connect,
-            R.bool.pref_default_value_bridge_auto_connect
-        )
-
     val SCREENSHOT_SYNC: SettingLiveData<Boolean> =
         BooleanSettingLiveData(
             R.string.pref_key_bridge_screenshot_sync,

@@ -189,7 +189,6 @@ final class FolderSourceTests: XCTestCase {
                                        port: 1, fp: "00000000")]
         }
         XCTAssertNil(FileWeaveFolderSource.discoverPaired(store: store, browse: strangers))
-
         // 没有任何配对记录带 folderFp 时，广播再多也一律不连。
         // （另建一个文件给第二个 store：PairedDeviceStore 按文件属性缓存，
         //  同一路径快速改写两次可能因时间戳粒度撞上缓存。）
@@ -206,5 +205,58 @@ final class FolderSourceTests: XCTestCase {
         XCTAssertNil(FileWeaveFolderSource.discoverPaired(store: storeNoFp, browse: any))
 
         try? FileManager.default.removeItem(at: dir)
+    }
+
+    /// 「为什么没连上」必须分开报：没配对 / 手机不在线 / 配对失效，
+    /// 三种原因用户的下一步动作完全不同，提示区靠它区分文案。
+    func testDiscoveryDiagnosisSeparatesCauses() {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("fw-test-diag-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let pairedFile = dir.appendingPathComponent("paired-devices.json")
+        let paired = """
+        {"8f2a": {"name": "Honor", "token": "t-1234567890abcdefghij",
+                  "folderFp": "aabbccdd"}}
+        """
+        try? Data(paired.utf8).write(to: pairedFile)
+        let pairedStore = PairedDeviceStore(url: pairedFile)
+        let noBrowse: (TimeInterval) -> [FolderDiscovery.Candidate] = { _ in
+            fatalError("没配对时连广播都不该发")
+        }
+
+        // 一条配对记录都没有：还没配对，不用等广播结果。
+        let emptyFile = dir.appendingPathComponent("paired-devices-empty.json")
+        try? Data("{}".utf8).write(to: emptyFile)
+        XCTAssertEqual(
+            FileWeaveFolderSource.discoverPairedWithDiagnosis(
+                store: PairedDeviceStore(url: emptyFile), browse: noBrowse).diagnosis,
+            .notPaired)
+
+        // 有配对记录但网络里没有广播：手机不在线。
+        XCTAssertEqual(
+            FileWeaveFolderSource.discoverPairedWithDiagnosis(
+                store: pairedStore, browse: { _ in [] }).diagnosis,
+            .phoneOffline)
+
+        // 有广播但指纹对不上：手机重装 / 重置过共享密钥，要重新配对。
+        let strangers: (TimeInterval) -> [FolderDiscovery.Candidate] = { _ in
+            [FolderDiscovery.Candidate(name: "stranger", host: "127.0.0.1",
+                                       port: 1, fp: "00000000")]
+        }
+        XCTAssertEqual(
+            FileWeaveFolderSource.discoverPairedWithDiagnosis(
+                store: pairedStore, browse: strangers).diagnosis,
+            .pairingMismatch)
+
+        // 指纹对上了但探测连不通（127.0.0.1:1 立刻拒绝）：暂时性不可达。
+        let matchesButDead: (TimeInterval) -> [FolderDiscovery.Candidate] = { _ in
+            [FolderDiscovery.Candidate(name: "Honor", host: "127.0.0.1",
+                                       port: 1, fp: "aabbccdd")]
+        }
+        XCTAssertEqual(
+            FileWeaveFolderSource.discoverPairedWithDiagnosis(
+                store: pairedStore, browse: matchesButDead).diagnosis,
+            .unreachable)
     }
 }

@@ -1,0 +1,16 @@
+<resources>
+    <string name="fw_menu_close">关闭菜单</string>
+    <string name="fw_menu_back">返回%1$s</string>
+    <string name="fw_menu_category">%1$s  ›</string>
+    <string name="fw_menu_no_results">没有匹配的选项</string>
+    <string name="fw_folder_tools">文件夹工具</string>
+    <string name="fw_share_folder">分享此文件夹</string>
+    <string name="fw_menu_more">更多选项</string>
+    <string name="fw_view_display">显示</string>
+    <string name="fw_view_sorting">排序</string>
+    <string name="fw_view_scope">排序设置范围</string>
+    <string name="fw_encoding_search">编码</string>
+    <string name="fw_filter_files">筛选文件…</string>
+    <string name="fw_recent_fixed_sort">最近文件始终按新增时间从新到旧排列。</string>
+    <string name="fw_menu_open_category">打开%1$s</string>
+</resources>

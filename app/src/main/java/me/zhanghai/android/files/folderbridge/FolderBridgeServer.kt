@@ -128,6 +128,15 @@ class FolderBridgeKernel(
     var receiveClipboard: ((String) -> Unit)? = null
     var selectionVersion: () -> Long = { 0L }
     var recordingsEnabled: () -> Boolean = { true }
+    var screenshotsBackend: (() -> FolderBridgeBackend?)? = null
+    var fileContentType: String = "audio/mp4"
+    /** Primary shared-storage volume, independent of the selected recordings directory. */
+    var storageCapacity: () -> StorageCapacity? = { null }
+
+    data class StorageCapacity(val totalBytes: Long, val availableBytes: Long) {
+        val isValid: Boolean
+            get() = totalBytes > 0 && availableBytes in 0..totalBytes
+    }
     private val tokenBytes = token.toByteArray(Charsets.UTF_8)
 
     /** Files counted by the most recent scan; -1 when the last scan failed or has not run. */
@@ -223,8 +232,29 @@ class FolderBridgeKernel(
             }
             return
         }
+        if (path.startsWith("/v1/screenshots")) {
+            val scope = screenshotsBackend?.invoke()
+            if (scope == null) { respondJson(output, 403, errorJson("Screenshots sharing unavailable")); return }
+            // Reuse the authenticated recording protocol, including range reads and
+            // verified trash/restore. The backend only admits screenshot directories.
+            val delegate = FolderBridgeKernel(scope, token, model)
+            delegate.fileContentType = "application/octet-stream"
+            delegate.recordingsEnabled = { screenshotsBackend?.invoke() != null }
+            val route = when (path) {
+                "/v1/screenshots" -> "/v1/tree"
+                "/v1/screenshots/file" -> "/v1/file"
+                "/v1/screenshots/trash" -> "/v1/trash"
+                "/v1/screenshots/restore" -> "/v1/restore"
+                else -> { respondJson(output, 404, errorJson("Unknown screenshot endpoint")); return }
+            }
+            val rewritten = "$method $route" + (if (query.isEmpty()) "" else "?$query") + " HTTP/1.1\r\n" +
+                "Authorization: Bearer $token\r\nContent-Length: ${body.size}\r\n" +
+                (headers["range"]?.let { "Range: $it\r\n" } ?: "") + "\r\n"
+            delegate.handle(java.io.SequenceInputStream(rewritten.byteInputStream(), body.inputStream()), output)
+            return
+        }
         if (!recordingsEnabled() && path in listOf("/v1/tree", "/v1/file", "/v1/trash", "/v1/restore")) {
-            if (path == "/v1/tree") respondJson(output, 200, "{\"ok\":true,\"items\":[]}")
+            if (path == "/v1/tree") respondJson(output, 200, "{\"ok\":true,\"enabled\":false,\"items\":[]}")
             else respondJson(output, 403, errorJson("Recordings sharing disabled"))
             return
         }
@@ -286,8 +316,14 @@ class FolderBridgeKernel(
 
     private fun statusJson(): String {
         val files = lastScanCount
+        // A failed capacity read must not make the connection probe fail.
+        val capacity = try { storageCapacity()?.takeIf { it.isValid } } catch (_: Exception) { null }
+        val storage = capacity?.let {
+            ",\"storage\":{\"volume\":\"primary\",\"totalBytes\":${it.totalBytes}," +
+                "\"availableBytes\":${it.availableBytes}}"
+        } ?: ""
         return "{\"proto\":1,\"model\":" + jsonQuote(model) + ",\"files\":" + files +
-            ",\"root\":" + jsonQuote(backend.rootName) + "}"
+            ",\"root\":" + jsonQuote(backend.rootName) + storage + "}"
     }
 
     private fun treeJson(): String {
@@ -380,7 +416,7 @@ class FolderBridgeKernel(
             }
             val length = if (size >= 0) end - start + 1 else -1L
             val builder = StringBuilder("HTTP/1.1 $status ${reason(status)}\r\n")
-                .append("Content-Type: audio/mp4\r\n")
+                .append("Content-Type: $fileContentType\r\n")
                 .append("Accept-Ranges: bytes\r\n")
             if (length >= 0) {
                 builder.append("Content-Length: ").append(length).append("\r\n")

@@ -42,6 +42,7 @@ import me.zhanghai.android.files.webdavserver.WebDavServerActivity
 val navigationItems: List<NavigationItem?>
     get() =
         mutableListOf<NavigationItem?>().apply {
+            add(RecentFilesItem())
             addAll(storageItems)
             if (Environment::class.supportsExternalStorageManager()) {
                 // Starting with R, we can get read/write access to non-primary storage volumes with
@@ -51,9 +52,17 @@ val navigationItems: List<NavigationItem?>
                 addAll(storageVolumeItems)
             }
             add(AddStorageItem())
+            add(IntentMenuItem(
+                R.drawable.shared_directory_icon_white_24dp, R.string.fw_lan_hub_title,
+                me.zhanghai.android.files.lanshare.LanShareActivity::class.createIntent()
+            ))
             // Standard directory categories are hidden from the drawer; the drawer
             // leads with the paired-Mac sharing entries instead. The directories
             // remain reachable from the file list and settings.
+            add(IntentMenuItem(
+                R.drawable.lock_icon_white_24dp, R.string.fw_vault_title,
+                me.zhanghai.android.files.vault.VaultActivity::class.createIntent()
+            ))
             addAll(macSharingItems)
             add(null)
             add(PairedShareMenuItem(true, R.drawable.audio_icon_white_24dp, R.string.fw_folder_bridge_title,
@@ -71,6 +80,22 @@ val navigationItems: List<NavigationItem?>
             addAll(menuItems)
         }
 
+internal class RecentFilesItem : NavigationItem() {
+    override val id: Long = R.string.fw_recent_files.toLong()
+    override val iconRes: Int = R.drawable.recent_files_icon_white_24dp
+    override fun getTitle(context: Context): String = context.getString(R.string.fw_recent_files)
+    override fun isChecked(listener: Listener): Boolean = listener.isRecentFiles
+    override fun onClick(listener: Listener) {
+        listener.navigateToRecentFiles()
+        listener.closeNavigationDrawer()
+    }
+    override fun onLongClick(listener: Listener): Boolean {
+        listener.configureRecentFiles()
+        listener.closeNavigationDrawer()
+        return true
+    }
+}
+
 private val storageItems: List<NavigationItem>
     @Size(min = 0)
     get() =
@@ -83,7 +108,7 @@ private val storageItems: List<NavigationItem>
             }
 
 private abstract class PathItem(val path: Path) : NavigationItem() {
-    override fun isChecked(listener: Listener): Boolean = listener.currentPath == path
+    override fun isChecked(listener: Listener): Boolean = !listener.isRecentFiles && listener.currentPath == path
 
     override fun onClick(listener: Listener) {
         if (this is NavigationRoot) {
@@ -358,11 +383,8 @@ private class BookmarkDirectoryItem(
     val isScreenCaptureDirectory: Boolean
         get() = bookmarkDirectory.path.fileName?.toString() == "Screenshots"
 
-    override fun getTitle(context: Context): String =
-        if (isScreenCaptureDirectory && bookmarkDirectory.name in setOf(
-                context.getString(R.string.settings_bookmark_directory_screenshots), "Screenshots", "屏幕截图"))
-            context.getString(R.string.fw_screen_captures)
-        else bookmarkDirectory.name
+    // Bookmark labels are user content, even when they happen to equal a translated default.
+    override fun getTitle(context: Context): String = bookmarkDirectory.name
 
     override fun onLongClick(listener: Listener): Boolean {
         listener.launchIntent(
@@ -374,7 +396,7 @@ private class BookmarkDirectoryItem(
 }
 
 private val macSharingItems: List<NavigationItem>
-    @Size(2)
+    @Size(3)
     get() = listOf(
         IntentMenuItem(
             R.drawable.clipboard_icon_white_24dp, R.string.fw_navigation_mac_clipboard,
@@ -383,7 +405,8 @@ private val macSharingItems: List<NavigationItem>
         PairedShareMenuItem(false,
             R.drawable.computer_icon_white_24dp, R.string.fw_navigation_mac_shared,
             me.zhanghai.android.files.bridge.BridgeActivity::class.createIntent()
-        )
+        ),
+        ScreenshotSyncMenuItem()
     )
 
 private val menuItems: List<NavigationItem>
@@ -468,4 +491,17 @@ private class PairedShareMenuItem(
     override fun onClick(listener: Listener) { configure(listener); listener.closeNavigationDrawer() }
     override fun configure(listener: Listener) { listener.launchIntent(intent) }
     override fun onLongClick(listener: Listener): Boolean { configure(listener); return true }
+}
+
+// 截屏/录屏自动同步：开关就放在侧边栏，不进设置页；点整行即切换。
+private class ScreenshotSyncMenuItem : MenuItem(
+    R.drawable.camera_icon_white_24dp, R.string.fw_bridge_screenshot_sync_title
+) {
+    override val id: Long = R.string.fw_bridge_screenshot_sync_title.toLong()
+    override val switchChecked: Boolean
+        get() = Settings.SCREENSHOT_SYNC.valueCompat
+    override fun toggle(context: Context) {
+        Settings.SCREENSHOT_SYNC.putValue(!switchChecked)
+    }
+    override fun onClick(listener: Listener) {}
 }

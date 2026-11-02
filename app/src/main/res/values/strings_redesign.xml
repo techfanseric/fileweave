@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fw_redesign_files">Files</string>
+    <string name="fw_redesign_devices">Devices</string>
+    <string name="fw_redesign_transfers">Transfers</string>
+    <string name="fw_redesign_back">Back</string>
+    <string name="fw_redesign_tools">Tools</string>
+    <string name="fw_redesign_nearby">Your devices</string>
+    <string name="fw_redesign_mac">Mac connection</string>
+    <string name="fw_redesign_device_hint">Open FileWeave on your Mac and connect both devices to the same network.</string>
+    <string name="fw_redesign_sharing">Share with devices</string>
+    <string name="fw_redesign_transfer_empty">No transfers yet</string>
+    <string name="fw_redesign_transfer_hint">Files and clipboard exchanges with your Mac appear here after they complete.</string>
+    <string name="fw_redesign_file_empty">No shared files</string>
+    <string name="fw_redesign_file_hint">Files shared by your connected Mac appear here.</string>
+    <string name="fw_redesign_vault_hint">Import a file to keep an encrypted copy in your vault.</string>
+    <string name="fw_redesign_clipboard_preview">From your Mac</string>
+    <string name="fw_redesign_clipboard_empty">No received text</string>
+    <string name="fw_redesign_clipboard_hint">Receive text from your Mac, or send the text currently on your phone clipboard.</string>
+    <string name="fw_redesign_all_history">View transfer history</string>
+    <string name="fw_redesign_vault_files">Encrypted files</string>
+    <string name="fw_redesign_file_actions">File actions</string>
+    <string name="fw_redesign_loading">Loading files…</string>
+    <string name="fw_redesign_history_file_sent">Sent to Mac</string>
+    <string name="fw_redesign_history_file_received">Downloaded to phone</string>
+    <string name="fw_redesign_history_text_sent">Text sent to Mac</string>
+    <string name="fw_redesign_history_text_received">Text received from Mac</string>
+    <string name="fw_redesign_history_filter_all">All</string>
+    <string name="fw_redesign_history_filter_files">Files</string>
+    <string name="fw_redesign_history_filter_text">Clipboard</string>
+    <string name="fw_redesign_busy_hint">Keep this screen open until the operation finishes.</string>
+    <string name="fw_redesign_history_scope">Completed exchanges with your Mac</string>
+    <string name="fw_redesign_transcript_hint">Transcripts saved from your recordings appear here.</string>
+    <string name="fw_redesign_vault_security">Vault security</string>
+    <string name="fw_redesign_vault_unlocked">Unlocked</string>
+    <string name="fw_redesign_vault_lock_hint">Locks when you leave this screen</string>
+    <string name="fw_redesign_phone_sharing">Phone sharing</string>
+    <string name="fw_internal_storage">Internal storage</string>
+</resources>

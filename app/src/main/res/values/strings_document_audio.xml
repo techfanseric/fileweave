@@ -1,0 +1,9 @@
+<resources>
+    <string name="fw_document_previous">Previous</string><string name="fw_document_next">Next</string>
+    <string name="fw_document_loading">Loading…</string><string name="fw_document_page">%1$d / %2$d</string><string name="fw_document_error">Unable to open PDF</string>
+    <string name="fw_audio_previous">Previous</string><string name="fw_audio_next">Next</string><string name="fw_audio_pause">Pause</string><string name="fw_audio_play">Play</string><string name="fw_audio_speed">Speed</string><string name="fw_audio_queue">Queue</string><string name="fw_audio_close">Close</string>
+    <string name="fw_audio_error">Cannot play %1$s</string>
+    <string name="fw_text_edit">Edit</string>
+    <string name="fw_document_single_mode">Single page</string>
+    <string name="fw_document_continuous_mode">Continuous</string>
+</resources>

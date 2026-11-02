@@ -3,7 +3,7 @@
     <string name="fw_lan_share">局域网分享</string>
     <string name="fw_lan_scope">正在分享选中的 %1$d 项</string>
     <string name="fw_lan_no_network">请先连接局域网 Wi-Fi</string>
-    <string name="fw_lan_hint">同一局域网中，持有链接的人可浏览和下载选中的内容。此 HTTP 链接仅供读取。停止分享或锁定手机后立即失效；创建新的分享会替换当前链接。</string>
+    <string name="fw_lan_hint">同一局域网中，持有链接的人可浏览和下载当前分享范围内的内容。此 HTTP 链接只读；停止、替换分享或服务结束后失效。</string>
     <string name="fw_lan_copy">复制地址</string>
     <string name="fw_lan_send">发送地址</string>
     <string name="fw_lan_copied">地址已复制</string>

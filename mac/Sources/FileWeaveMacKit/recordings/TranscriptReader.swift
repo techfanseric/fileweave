@@ -56,17 +56,17 @@ public struct TranscriptDocument: Identifiable {
                 continue
             }
             // 头部字段
-            if !line.hasPrefix("["), let sep = line.firstIndex(of: "：") {
+            if !line.hasPrefix("["), let sep = line.firstIndex(of: "：") ?? line.firstIndex(of: ":") {
                 let key = String(line[line.startIndex..<sep])
-                let value = String(line[line.index(after: sep)...])
+                let value = String(line[line.index(after: sep)...]).trimmingCharacters(in: .whitespaces)
                 switch key {
-                case "文件", "时长", "生成", "模型", "句子", "耗时":
+                case "文件", "时长", "生成", "模型", "句子", "耗时", "File", "Duration", "Generated", "Model", "Sentences", "Processing":
                     flush()
                     switch key {
-                    case "时长": duration = value
-                    case "生成": generated = value
-                    case "模型": model = value
-                    case "句子": summary = value
+                    case "时长", "Duration": duration = value
+                    case "生成", "Generated": generated = value
+                    case "模型", "Model": model = value
+                    case "句子", "Sentences": summary = value
                     default: break
                     }
                     continue
@@ -89,9 +89,10 @@ public struct TranscriptDocument: Identifiable {
                     .trimmingCharacters(in: .whitespaces)
                 // 「说话人 1」或「说话人A」，没有则说明未分离
                 var speaker: String?
-                if tail.hasPrefix("说话人") {
+                if tail.hasPrefix("说话人") || tail.hasPrefix("Speaker") {
                     speaker = tail
                         .replacingOccurrences(of: "说话人", with: "")
+                        .replacingOccurrences(of: "Speaker", with: "")
                         .trimmingCharacters(in: .whitespaces)
                 }
                 pendingTime = (start, end, speaker)

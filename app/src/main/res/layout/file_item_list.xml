@@ -10,7 +10,10 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/itemLayout"
     android:layout_width="match_parent"
-    android:layout_height="@dimen/two_line_list_item_height"
+    android:layout_height="wrap_content"
+    android:minHeight="@dimen/two_line_list_item_height"
+    android:paddingTop="8dp"
+    android:paddingBottom="8dp"
     android:foreground="?selectableItemBackground"
     android:gravity="center_vertical"
     android:orientation="horizontal">
@@ -91,6 +94,15 @@
             android:duplicateParentState="true"
             android:ellipsize="end"
             android:maxLines="1"
+            android:textAppearance="?textAppearanceListItemSecondary"
+            android:textColor="?android:textColorSecondary" />
+        <me.zhanghai.android.files.ui.AutoGoneTextView
+            android:id="@+id/locationText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:duplicateParentState="true"
+            android:ellipsize="start"
+            android:singleLine="true"
             android:textAppearance="?textAppearanceListItemSecondary"
             android:textColor="?android:textColorSecondary" />
     </LinearLayout>

@@ -14,6 +14,10 @@ object VaultSession {
     private var generation = 0L
     private var observerInstalled = false
     private val handles = mutableSetOf<Int>()
+    private val transitionLock = Any()
+    private val lockListeners = java.util.concurrent.CopyOnWriteArraySet<() -> Unit>()
+    fun addLockListener(listener: () -> Unit) { lockListeners += listener }
+    fun removeLockListener(listener: () -> Unit) { lockListeners -= listener }
     @Synchronized fun isOpen() = session >= 0
     @Synchronized fun generation() = generation
 
@@ -25,34 +29,57 @@ object VaultSession {
         })
     }
 
-    @Synchronized fun unlock(root: File, password: ByteArray, create: Boolean, expectedGeneration: Long? = null) {
-        // A delayed password/biometric result cannot reopen a session invalidated by locking.
-        if (expectedGeneration != null && expectedGeneration != generation) {
-            password.fill(0)
-            throw IOException("Unlock session expired")
-        }
+    fun unlock(root: File, password: ByteArray, create: Boolean, expectedGeneration: Long? = null) {
         try {
-            lock()
-            if (create && root.exists() && root.list()?.isNotEmpty() == true) throw IOException("Vault already exists")
-            root.mkdirs()
-            val id = GocryptfsNative.unlock(root.absolutePath, password, create)
-            if (id < 0) throw IOException(if (create) "Unable to create vault" else "Wrong password or unreadable vault")
-            session = id
-            generation++
-            // A process termination may leave an unfinished encrypted import. No source is deleted.
-            GocryptfsNative.list(id, "/")?.filter {
-                it.name.matches(Regex("\\.fileweave-import-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"))
-            }?.forEach { GocryptfsNative.remove(id, "/${it.name}") }
+            // Session transitions remain serialized, while callbacks run outside the native
+            // read monitor. A share revocation must not deadlock a reader holding its own lock.
+            synchronized(transitionLock) {
+                val listeners = synchronized(this) {
+                    if (expectedGeneration != null && expectedGeneration != generation) {
+                        throw IOException("Unlock session expired")
+                    }
+                    invalidateSessionLocked()
+                }
+                notifyLocked(listeners)
+                synchronized(this) {
+                    if (create && root.exists() && root.list()?.isNotEmpty() == true) throw IOException("Vault already exists")
+                    root.mkdirs()
+                    val id = GocryptfsNative.unlock(root.absolutePath, password, create)
+                    if (id < 0) throw IOException(if (create) "Unable to create vault" else "Wrong password or unreadable vault")
+                    session = id
+                    generation++
+                    // A process termination may leave an unfinished encrypted import. No source is deleted.
+                    GocryptfsNative.list(id, "/")?.filter {
+                        it.name.matches(Regex("\\.fileweave-import-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"))
+                    }?.forEach { GocryptfsNative.remove(id, "/${it.name}") }
+                }
+            }
         } finally { password.fill(0) }
     }
-    @Synchronized fun lock() {
-        if (session >= 0) {
+    fun lock() {
+        synchronized(transitionLock) {
+            val listeners = synchronized(this) { invalidateSessionLocked() }
+            // Complete all revocations before lock() returns, without holding the native monitor.
+            notifyLocked(listeners)
+        }
+    }
+    /** Caller holds this object's native read monitor. Already-locked background callbacks
+     * invalidate delayed unlocks but do not end an unrelated ordinary file share. */
+    private fun invalidateSessionLocked(): List<() -> Unit> {
+        val wasOpen = session >= 0
+        if (wasOpen) {
             handles.forEach { GocryptfsNative.closeFile(session, it) }
             handles.clear()
             GocryptfsNative.close(session)
         }
         session = -1
         generation++
+        return if (wasOpen) lockListeners.toList() else emptyList()
+    }
+    private fun notifyLocked(listeners: List<() -> Unit>) {
+        for (listener in listeners) try { listener() } catch (error: Exception) {
+            android.util.Log.e("VaultSession", "Lock listener failed", error)
+        }
     }
     private fun requireOpen(expected: Long? = null): Int {
         if (session < 0 || expected != null && expected != generation) throw IOException("Vault is locked")

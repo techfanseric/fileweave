@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="fw_bridge_screenshot_sync_title">Send new screenshots and screen recordings to Mac</string>
-    <string name="fw_bridge_screenshot_sync_summary">While connected, send new images and finished videos from Pictures/Screenshots to your paired Mac.</string>
+    <string name="fw_bridge_screenshot_sync_title">Screenshot &amp; recording sync</string>
 </resources>

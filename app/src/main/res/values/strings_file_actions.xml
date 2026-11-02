@@ -1,0 +1,6 @@
+<resources>
+    <string name="fw_file_share_send">Share and send…</string>
+    <string name="fw_file_share_other_apps">Share via other apps…</string>
+    <string name="fw_file_store_in_vault">Store in vault…</string>
+    <string name="fw_file_tools">File tools…</string>
+</resources>

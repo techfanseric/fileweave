@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.Environment
 import android.os.storage.StorageVolume
 import android.provider.DocumentsContract
+import me.zhanghai.android.files.R
 import me.zhanghai.android.files.util.lazyReflectedMethod
 import java.io.File
 
@@ -41,7 +42,12 @@ val StorageVolume.directoryCompat: File?
         }
 
 @SuppressLint("NewApi")
-fun StorageVolume.getDescriptionCompat(context: Context): String = getDescription(context)
+fun StorageVolume.getDescriptionCompat(context: Context): String =
+    // The framework can return a description in the system process locale, ignoring the app's
+    // chosen language. Only the built-in emulated volume has an application-owned label;
+    // removable volume labels are user content and must pass through unchanged.
+    if (isPrimaryCompat && isEmulatedCompat) context.getString(R.string.fw_internal_storage)
+    else getDescription(context)
 
 val StorageVolume.isPrimaryCompat: Boolean
     @SuppressLint("NewApi")

@@ -1,5 +1,15 @@
 package me.zhanghai.android.files.bridge
 
+import android.content.Intent
+import androidx.compose.material3.Text
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import me.zhanghai.android.files.design.*
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.os.Bundle
@@ -32,46 +42,29 @@ class ClipboardActivity : FeatureActivity() {
 
     private fun render() {
         val state = BridgeConnectionService.stateLiveData.valueCompat
-        screen(getString(R.string.fw_clipboard_title))
-        // 顶部只保留一行紧凑状态：连接是后台默认能力，无需占据大段篇幅。
-        text(when {
-            state.connected -> getString(R.string.fw_bridge_connection_connected, state.macName.orEmpty())
-            state.phase == BridgeConnectionService.Phase.PAIRING -> getString(R.string.fw_bridge_connection_pairing)
-            else -> getString(R.string.fw_bridge_history_status_disconnected)
-        })
-        // 常用动作紧凑排列在状态行与历史列表之间。
-        button(getString(R.string.fw_bridge_send_clipboard)) { sendClipboard() }
-        button(getString(R.string.fw_clipboard_refresh)) { fetchMacClipboard() }
-        state.macClipboard?.takeIf { it.isNotEmpty() }?.let { mac ->
-            button(getString(R.string.fw_clipboard_copy_mac)) { copyToPhone(mac) }
-        }
-        renderHistory()
-    }
-
-    /** 历史为主体：倒序逐行展示，空态给出引导；非空时在底部提供清空入口。 */
-    private fun renderHistory() {
-        val history = BridgeHistoryStore.list(this)
-        text(getString(R.string.fw_bridge_history_title))
-        if (history.isEmpty()) {
-            text(getString(R.string.fw_bridge_history_empty))
-            return
-        }
-        history.forEach { entry -> text(entry.formatForDisplay(this)) }
-        button(getString(R.string.fw_bridge_history_clear)) { confirmClear() }
-    }
-
-    private fun confirmClear() {
-        MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.fw_bridge_history_clear)
-            .setMessage(R.string.fw_bridge_history_clear_confirm)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                lifecycleScope.launch {
-                    withContext(Dispatchers.IO) { BridgeHistoryStore.clear(this@ClipboardActivity) }
-                    render()
+        composeScreen {
+            FeaturePage(stringResource(R.string.fw_clipboard_title), { finish() }, busy = busy,
+                actions = listOf(PageAction(stringResource(R.string.fw_redesign_all_history)) {
+                    startActivity(Intent(this@ClipboardActivity, TransfersActivity::class.java))
+                })) {
+                item { StatusLine(when {
+                    state.connected -> getString(R.string.fw_bridge_connection_connected, state.macName.orEmpty())
+                    state.phase == BridgeConnectionService.Phase.PAIRING -> getString(R.string.fw_bridge_connection_pairing)
+                    state.phase == BridgeConnectionService.Phase.RETRYING -> getString(R.string.fw_bridge_connection_retrying)
+                    else -> getString(R.string.fw_bridge_connection_finding)
+                }) }
+                item { PrimaryAction(stringResource(R.string.fw_bridge_send_clipboard), state.connected && !busy) { sendClipboard() } }
+                item { SectionTitle(stringResource(R.string.fw_redesign_clipboard_preview)) }
+                val received = state.macClipboard?.takeIf { it.isNotEmpty() }
+                if (received == null) item {
+                    EmptyContent(stringResource(R.string.fw_redesign_clipboard_empty), stringResource(R.string.fw_redesign_clipboard_hint), R.drawable.clipboard_icon_white_24dp)
+                } else {
+                    item { SelectionContainer { Text(received, Modifier.fillMaxWidth().padding(24.dp), style = MaterialTheme.typography.bodyLarge) } }
+                    item { ContentRow(stringResource(R.string.fw_clipboard_copy_mac), icon = R.drawable.clipboard_icon_white_24dp, enabled = !busy, onClick = { copyToPhone(received) }) }
                 }
+                item { ContentRow(stringResource(R.string.fw_clipboard_refresh), icon = R.drawable.computer_icon_white_24dp, enabled = state.connected && !busy, onClick = { fetchMacClipboard() }) }
             }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
+        }
     }
 
     private fun sendClipboard() {
@@ -114,7 +107,7 @@ class ClipboardActivity : FeatureActivity() {
             return
         }
         if (busy) return
-        busy = true
+        busy = true; render()
         lifecycleScope.launch {
             val bridge = client ?: BridgeClient(config).also { client = it }
             try {

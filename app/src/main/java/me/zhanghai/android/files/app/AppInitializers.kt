@@ -14,11 +14,11 @@ import me.zhanghai.android.files.bridge.BridgeConnectionService
 import me.zhanghai.android.files.bridge.bridgeConnectionNotificationTemplate
 import me.zhanghai.android.files.coil.initializeCoil
 import me.zhanghai.android.files.filejob.fileJobNotificationTemplate
-import me.zhanghai.android.files.folderbridge.folderBridgeServiceNotificationTemplate
 import me.zhanghai.android.files.ftpserver.ftpServerServiceNotificationTemplate
 import me.zhanghai.android.files.hiddenapi.HiddenApi
 import me.zhanghai.android.files.provider.FileSystemProviders
 import me.zhanghai.android.files.provider.root.RootAccessLiveData
+import me.zhanghai.android.files.settings.AppLanguage
 import me.zhanghai.android.files.settings.Settings
 import me.zhanghai.android.files.storage.FtpServerAuthenticator
 import me.zhanghai.android.files.storage.SftpServerAuthenticator
@@ -35,6 +35,7 @@ import me.zhanghai.android.files.provider.smb.client.Client as SmbClient
 import me.zhanghai.android.files.provider.webdav.client.Client as WebDavClient
 
 val appInitializers = listOf(
+    { AppLanguage.initialize(application) },
     ::disableHiddenApiChecks,
     ::initializeWebViewDebugging,
     ::initializeCoil,
@@ -96,7 +97,6 @@ private fun createNotificationChannels() {
             listOf(
                 backgroundActivityStartNotificationTemplate.channelTemplate,
                 fileJobNotificationTemplate.channelTemplate,
-                folderBridgeServiceNotificationTemplate.channelTemplate,
                 bridgeConnectionNotificationTemplate.channelTemplate,
                 ftpServerServiceNotificationTemplate.channelTemplate,
                 // WebDAV 渠道也必须在此注册：未注册渠道上 startForeground 在 Android 8+
@@ -104,19 +104,16 @@ private fun createNotificationChannels() {
                 webDavServerServiceNotificationTemplate.channelTemplate
             ).map { it.create(application) }
         )
+        // 文件夹共享通知已并入 bridge_connection 渠道（见 MacLinkNotification）：
+        // 删除旧渠道，避免应用通知设置里残留一个永远不再使用的开关。
+        notificationManager.deleteNotificationChannel("folder_bridge")
     }
 }
 
 private fun startBridgeConnection() {
-    // Ambient connection is the default; the settings switch (and the notification
-    // action, which writes the same switch) is the only thing that keeps it off.
-    Settings.BRIDGE_AUTO_CONNECT.observeForever { enabled ->
-        if (enabled) {
-            BridgeConnectionService.start(application)
-        } else {
-            BridgeConnectionService.stop(application)
-        }
-    }
+    // 与 Mac 的常驻连接是应用自身的一部分：应用在，连接在。没有任何开关，
+    // 也不需要用户记住「打开连接」这件事。
+    BridgeConnectionService.start(application)
 }
 
 private fun checkRootAccess() {

@@ -1,0 +1,13 @@
+<resources>
+    <style name="Widget.FileWeave.Player.Icon" parent="Widget.AppCompat.ImageButton">
+        <item name="android:layout_width">48dp</item>
+        <item name="android:layout_height">48dp</item>
+        <item name="android:background">?selectableItemBackgroundBorderless</item>
+        <item name="android:padding">12dp</item>
+        <item name="android:scaleType">fitCenter</item>
+        <item name="tint">?android:textColorPrimary</item>
+    </style>
+    <style name="Widget.FileWeave.Player.VideoIcon" parent="Widget.FileWeave.Player.Icon">
+        <item name="tint">@android:color/white</item>
+    </style>
+</resources>

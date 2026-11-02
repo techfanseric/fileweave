@@ -53,7 +53,11 @@ class Bridge(ThreadingHTTPServer):
         self.inbox.mkdir(exist_ok=True)
         self.clipboard = clipboard or MacClipboard()
         self.clipboard_lock = threading.Lock()
+        # One memory-only received value, never a clipboard history or disk snapshot.
+        self.received_clipboard = None
         self.events_lock = threading.Lock()
+        self.peers_lock = threading.Lock()
+        self.active_peers = {}
         credentials = self.state / 'credentials.json'
         if credentials.exists():
             self.token = json.loads(credentials.read_text())['token']
@@ -141,6 +145,31 @@ class Bridge(ThreadingHTTPServer):
                 if temporary is not None:
                     temporary.unlink(missing_ok=True)
 
+    def note_authenticated_peer(self, device, host):
+        # Address discovery fallback for paired phones when multicast is unavailable.
+        # No bearer token is written; the Mac still pins the saved phone certificate.
+        try:
+            address = ipaddress.ip_address(host)
+        except ValueError:
+            return
+        if not address.is_private or address.is_loopback or address.is_unspecified:
+            return
+        now = time.time()
+        with self.peers_lock:
+            previous = self.active_peers.get(device)
+            if previous and previous['host'] == host and now - previous['seen'] < 5:
+                return
+            self.active_peers = {key: value for key, value in self.active_peers.items() if now - value['seen'] < 120}
+            self.active_peers[device] = {'device': device, 'host': host, 'seen': now}
+            values = sorted(self.active_peers.values(), key=lambda value: value['seen'], reverse=True)[:32]
+            temporary = self.state / ('.active-peers-' + secrets.token_hex(8))
+            try:
+                with open(temporary, 'x', opener=lambda path, flags: os.open(path, flags, 0o600)) as output:
+                    json.dump(values, output)
+                os.replace(temporary, self.state / 'active-peers.json')
+            finally:
+                temporary.unlink(missing_ok=True)
+
     @staticmethod
     @contextlib.contextmanager
     def _restrictive_umask():
@@ -183,6 +212,8 @@ class Handler(BaseHTTPRequestHandler):
             self.close_connection = True
             self.json(401, {'error': 'Pairing required'})
             return False
+        if not hmac.compare_digest(token, self.server.token):
+            self.server.note_authenticated_peer(hashlib.sha256(token.encode()).hexdigest(), self.client_address[0])
         return True
 
     def endpoint(self):
@@ -243,6 +274,10 @@ class Handler(BaseHTTPRequestHandler):
                             break
                         self.wfile.write(data)
                         remaining -= len(data)
+            elif endpoint == '/v1/received-clipboard':
+                with self.server.clipboard_lock:
+                    value = self.server.received_clipboard
+                self.json(200, {'clipboard': value})
             elif endpoint == '/v1/clipboard':
                 with self.server.clipboard_lock:
                     value = self.server.clipboard.read()
@@ -340,6 +375,7 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError('Invalid clipboard text')
                 with self.server.clipboard_lock:
                     self.server.clipboard.write(value)
+                    self.server.received_clipboard = {'id': secrets.token_hex(16), 'time': time.time(), 'text': value}
                 self.json(200, {'ok': True})
             elif endpoint == '/v1/file':
                 name = self.safe_name(query)

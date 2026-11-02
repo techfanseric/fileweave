@@ -1,21 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
-<merge xmlns:android="http://schemas.android.com/apk/res/android">
+<merge xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto">
     <LinearLayout android:id="@id/exo_bottom_bar" android:layout_width="match_parent"
         android:layout_height="wrap_content" android:layout_gravity="bottom"
-        android:orientation="vertical" android:paddingHorizontal="16dp" android:paddingBottom="12dp"
-        android:background="#99000000" android:layoutDirection="ltr">
+        android:orientation="vertical" android:paddingHorizontal="12dp" android:paddingTop="16dp" android:paddingBottom="8dp"
+        android:background="@drawable/player_bottom_scrim" android:layoutDirection="ltr">
         <androidx.media3.ui.DefaultTimeBar android:id="@id/exo_progress"
-            android:layout_width="match_parent" android:layout_height="40dp" />
+            android:layout_width="match_parent" android:layout_height="32dp"
+            app:bar_height="3dp" app:scrubber_enabled_size="10dp" app:scrubber_dragged_size="16dp" />
         <LinearLayout android:layout_width="match_parent" android:layout_height="48dp"
             android:gravity="center_vertical" android:orientation="horizontal">
-            <ImageButton android:contentDescription="@string/exo_controls_play_description" android:id="@id/exo_play_pause" style="@style/ExoStyledControls.Button.Center.PlayPause"
-                android:layout_width="48dp" android:layout_height="48dp" />
-            <TextView android:id="@id/exo_position" style="@style/ExoStyledControls.TimeText.Position" />
-            <TextView style="@style/ExoStyledControls.TimeText.Separator" />
-            <TextView android:id="@id/exo_duration" style="@style/ExoStyledControls.TimeText.Duration" />
-            <Space android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1" />
-            <ImageButton android:contentDescription="@string/exo_controls_cc_disabled_description" android:id="@id/exo_subtitle" style="@style/ExoStyledControls.Button.Bottom.CC" />
-            <ImageButton android:contentDescription="@string/exo_controls_settings_description" android:id="@id/exo_settings" style="@style/ExoStyledControls.Button.Bottom.Settings" />
+            <ImageButton android:id="@id/exo_play_pause" style="@style/ExoStyledControls.Button.Center.PlayPause"
+                android:contentDescription="@string/exo_controls_play_description" android:layout_width="48dp" android:layout_height="48dp" />
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                android:gravity="center_vertical" android:orientation="horizontal">
+                <TextView android:id="@id/exo_position" style="@style/ExoStyledControls.TimeText.Position" android:textSize="12sp" />
+                <TextView style="@style/ExoStyledControls.TimeText.Separator" android:textSize="12sp" />
+                <TextView android:id="@id/exo_duration" style="@style/ExoStyledControls.TimeText.Duration" android:textSize="12sp" />
+            </LinearLayout>
+            <ImageButton android:id="@id/exo_subtitle" style="@style/ExoStyledControls.Button.Bottom.CC"
+                android:contentDescription="@string/exo_controls_cc_disabled_description" />
+            <ImageButton android:id="@id/exo_settings" style="@style/ExoStyledControls.Button.Bottom.Settings"
+                android:contentDescription="@string/exo_controls_settings_description" />
+            <androidx.appcompat.widget.AppCompatImageButton android:id="@+id/video_lock"
+                style="@style/Widget.FileWeave.Player.VideoIcon" android:src="@drawable/lock_icon_white_24dp"
+                android:contentDescription="@string/fw_video_lock_controls" />
         </LinearLayout>
     </LinearLayout>
 </merge>

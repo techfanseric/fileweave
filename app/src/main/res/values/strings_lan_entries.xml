@@ -1,0 +1,6 @@
+<resources>
+    <string name="fw_lan_hub_title">LAN sharing</string>
+    <string name="fw_lan_hub_action">LAN sharing…</string>
+    <string name="fw_lan_share_current_folder">Share this folder over LAN</string>
+    <string name="fw_lan_share_copied_files">Share copied files over LAN</string>
+</resources>

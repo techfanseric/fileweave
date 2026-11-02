@@ -7,9 +7,6 @@ import android.content.Intent
 /** Shell-only checks without starting instrumentation or terminating the user's app. */
 class ShareCheckReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.getBooleanExtra("enable_connection", false)) {
-            me.zhanghai.android.files.settings.Settings.BRIDGE_AUTO_CONNECT.putValue(true)
-        }
         val pending = goAsync()
         Thread {
             try {

@@ -1,0 +1,37 @@
+<resources>
+    <string name="fw_lan_running">Sharing is on</string>
+    <string name="fw_lan_review_heading">Review received content</string>
+    <string name="fw_lan_session_note">Same local network · revoked when sharing stops</string>
+    <string name="fw_lan_start_global">Start sharing phone files</string>
+    <string name="fw_lan_scope_global">Internal storage · read only</string>
+    <string name="fw_lan_scope_selected">Selected items: %1$d · read only</string>
+    <string name="fw_lan_scope_text_only">Clipboard text only</string>
+    <string name="fw_lan_scope_empty">No files or text are currently shared</string>
+    <string name="fw_lan_change_scope">Change sharing scope</string>
+    <string name="fw_lan_choose_other_content">Choose other content</string>
+    <string name="fw_lan_pick_folder">Choose a folder</string>
+    <string name="fw_lan_only_clipboard_text">Clipboard text only</string>
+    <string name="fw_lan_action_copied_files">Clipboard files</string>
+    <string name="fw_lan_append_text">Attach clipboard text</string>
+    <string name="fw_lan_copy_access_code">Copy access code</string>
+    <string name="fw_lan_access_code_copied">Access code copied</string>
+    <string name="fw_lan_more_items">%1$d more items</string>
+    <string name="fw_lan_clear_text">Remove shared text</string>
+    <string name="fw_lan_notes_show">Sharing details</string>
+    <string name="fw_lan_review_details">Show received details</string>
+    <string name="fw_lan_review_less">Show less</string>
+    <string name="fw_lan_scope_help">Phone storage shares accessible internal shared storage, not private app data or encrypted vault contents. Choosing files, a folder, or clipboard content replaces the current sharing scope.\n\nUse a browser on the same local network. Access is read only; HTTP traffic is unencrypted. Links remain valid until sharing stops, the service ends, or a new share replaces them.\n\nClipboard text is a snapshot you explicitly attach. Later copies are not shared automatically. Imported files use a temporary cache that is removed when the share ends.</string>
+    <string name="fw_lan_global_storage">Phone storage</string>
+    <string name="fw_lan_global_permission_required">Allow file storage access in system settings before sharing phone storage.</string>
+
+    <!-- Action identities are shared by the toolbar and scope popup. -->
+    <item name="lan_more_append_text" type="id" />
+    <item name="lan_scope_global" type="id" />
+    <item name="lan_scope_folder" type="id" />
+    <item name="pick_files" type="id" />
+    <item name="share_clipboard" type="id" />
+    <item name="share_clipboard_files" type="id" />
+    <item name="clear_clipboard" type="id" />
+    <item name="access_code" type="id" />
+    <item name="toggle_notes" type="id" />
+</resources>

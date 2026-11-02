@@ -7,54 +7,69 @@
 
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <item
-        android:id="@+id/action_open_with"
-        android:title="@string/file_item_action_open_with" />
+    <group android:id="@+id/file_item_primary">
+        <item
+            android:id="@+id/action_copy"
+            android:title="@string/copy" />
+        <item
+            android:id="@+id/action_cut"
+            android:title="@string/cut" />
+        <item
+            android:id="@+id/action_rename"
+            android:title="@string/rename" />
+        <item
+            android:id="@+id/action_extract"
+            android:title="@string/file_item_action_extract" />
+        <item
+            android:id="@+id/action_share_send"
+            android:title="@string/fw_file_share_send">
+            <menu>
+                <item
+                    android:id="@+id/action_fw_send_mac"
+                    android:title="@string/fw_bridge_send_action" />
+                <item
+                    android:id="@+id/action_lan_share"
+                    android:title="@string/fw_lan_share" />
+                <item
+                    android:id="@+id/action_share"
+                    android:title="@string/fw_file_share_other_apps" />
+            </menu>
+        </item>
+        <item
+            android:id="@+id/action_fw_encrypt"
+            android:title="@string/fw_file_store_in_vault" />
+    </group>
 
-    <item
-        android:id="@+id/action_cut"
-        android:title="@string/cut" />
+    <group android:id="@+id/file_item_secondary">
+        <item
+            android:id="@+id/action_open_with"
+            android:title="@string/file_item_action_open_with" />
+        <item
+            android:id="@+id/action_file_tools"
+            android:title="@string/fw_file_tools">
+            <menu>
+                <item
+                    android:id="@+id/action_archive"
+                    android:title="@string/file_item_action_archive" />
+                <item
+                    android:id="@+id/action_copy_path"
+                    android:title="@string/file_item_action_copy_path" />
+                <item
+                    android:id="@+id/action_add_bookmark"
+                    android:title="@string/file_item_action_add_bookmark" />
+                <item
+                    android:id="@+id/action_create_shortcut"
+                    android:title="@string/file_item_action_create_shortcut" />
+            </menu>
+        </item>
+        <item
+            android:id="@+id/action_properties"
+            android:title="@string/file_item_action_properties" />
+    </group>
 
-    <item
-        android:id="@+id/action_copy"
-        android:title="@string/copy" />
-
-    <item
-        android:id="@+id/action_delete"
-        android:title="@string/delete" />
-
-    <item
-        android:id="@+id/action_rename"
-        android:title="@string/rename" />
-
-    <item
-        android:id="@+id/action_extract"
-        android:title="@string/file_item_action_extract" />
-
-    <item
-        android:id="@+id/action_archive"
-        android:title="@string/file_item_action_archive" />
-
-    <item
-        android:id="@+id/action_share"
-        android:title="@string/share" />
-
-    <item
-        android:id="@+id/action_copy_path"
-        android:title="@string/file_item_action_copy_path" />
-
-    <item
-        android:id="@+id/action_add_bookmark"
-        android:title="@string/file_item_action_add_bookmark" />
-
-    <item
-        android:id="@+id/action_create_shortcut"
-        android:title="@string/file_item_action_create_shortcut" />
-
-    <item
-        android:id="@+id/action_properties"
-        android:title="@string/file_item_action_properties" />
-    <item android:id="@+id/action_fw_encrypt" android:title="@string/fw_vault_store_action" />
-    <item android:id="@+id/action_fw_send_mac" android:title="@string/fw_bridge_send_action" />
-    <item android:id="@+id/action_lan_share" android:title="@string/fw_lan_share" />
+    <group android:id="@+id/file_item_destructive">
+        <item
+            android:id="@+id/action_delete"
+            android:title="@string/delete" />
+    </group>
 </menu>

@@ -11,20 +11,51 @@ echo "==> 构建"
 "$ROOT/build.sh"
 
 echo "==> 安装到 $DEST"
-# 先停掉正在跑的旧实例。必须用 TERM 让它走正常退出路径收掉 bridge.py 子进程；
-# 直接 KILL 会把 bridge.py 孤儿化，占着 8787 让新实例永远起不来。
-pkill -TERM -f "FileWeave Mac.app" 2>/dev/null || true
-sleep 1
-# 兜底：万一有上次异常退出的孤儿 bridge.py，一并收掉（只杀本仓库状态目录的实例）。
-pkill -TERM -f "bridge\.py --state" 2>/dev/null || true
-sleep 1
+# Only stop the installed app and child bridge processes confirmed before shutdown.
+# Do not match every bridge.py or development/QA copy on this Mac.
+/usr/bin/python3 - "$DEST/Contents/MacOS/FileWeaveMac" "$ROOT/bridge.py" "$ROOT/.state" <<'PYCODE'
+import os, re, signal, subprocess, sys, time
+exe, script, state = sys.argv[1:]
+def processes():
+    result = []
+    for line in subprocess.check_output(["ps", "-axo", "pid=,ppid=,command="], text=True).splitlines():
+        match = re.match(r"\s*(\d+)\s+(\d+)\s+(.*)", line)
+        if match: result.append((int(match[1]), int(match[2]), match[3]))
+    return result
+rows = processes()
+apps = {pid for pid, _, command in rows if command == exe or command.startswith(exe + " ")}
+children = {pid for pid, parent, command in rows if parent in apps and command.endswith(script + " --state " + state)}
+for pid in apps: os.kill(pid, signal.SIGTERM)
+for ids in [apps, children]:
+    if ids is children:
+        for pid, _, command in processes():
+            if pid in children and command.endswith(script + " --state " + state): os.kill(pid, signal.SIGTERM)
+    deadline = time.time() + 5
+    while time.time() < deadline and any(pid in ids for pid, _, _ in processes()): time.sleep(0.1)
+    if any(pid in ids for pid, _, _ in processes()):
+        raise SystemExit("The previous app or its server has not exited; installation stopped without force-killing it.")
+PYCODE
+# Retain the old executable bundle for rollback. User data is stored outside it.
+BACKUP="$(mktemp -d "${TMPDIR:-/tmp}/fileweave-app-backup.XXXXXX")"
+if [ -d "$DEST" ]; then cp -R "$DEST" "$BACKUP/$APP_NAME.app"; fi
+STAGING="$(mktemp -d "/Applications/.fileweave-install.XXXXXX")"
+cp -R "$ROOT/build/$APP_NAME.app" "$STAGING/$APP_NAME.app"
+codesign --verify --deep --strict "$STAGING/$APP_NAME.app"
 if [ -d "$DEST" ]; then
   rm -rf "$DEST"
 fi
-cp -R "$ROOT/build/$APP_NAME.app" "$DEST"
+if ! mv "$STAGING/$APP_NAME.app" "$DEST"; then
+  if [ -d "$BACKUP/$APP_NAME.app" ]; then cp -R "$BACKUP/$APP_NAME.app" "$DEST"; fi
+  exit 1
+fi
+rmdir "$STAGING"
+echo "Previous app backup: $BACKUP"
 # build.sh 已签好。**这里不能再用 ad-hoc 重签**：
 # 签名与路径无关，拷贝不破坏它；重签一次身份就变了。
-codesign --verify "$DEST" 2>&1 | tail -2 || true
+codesign --verify --deep --strict "$DEST" 2>&1 | tail -2
+
+echo "==> Install CLI / 安装 CLI"
+"$ROOT/install-cli.sh" "$DEST"
 
 echo "==> 启动"
 open -a "$DEST"

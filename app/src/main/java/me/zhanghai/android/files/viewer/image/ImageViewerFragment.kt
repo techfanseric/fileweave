@@ -92,6 +92,7 @@ class ImageViewerFragment : Fragment(), ConfirmDeleteDialogFragment.Listener {
         systemUiHelper = SystemUiHelper(
             activity, SystemUiHelper.LEVEL_IMMERSIVE, SystemUiHelper.FLAG_IMMERSIVE_STICKY
         ) { visible: Boolean ->
+            binding.appBarLayout.visibility = if (visible) View.VISIBLE else View.INVISIBLE
             binding.appBarLayout.animate()
                 .alpha(if (visible) 1f else 0f)
                 .translationY(if (visible) 0f else -binding.appBarLayout.bottom.toFloat())
@@ -100,7 +101,8 @@ class ImageViewerFragment : Fragment(), ConfirmDeleteDialogFragment.Listener {
                 .start()
         }
         // This will set up window flags.
-        systemUiHelper.show()
+        binding.appBarLayout.alpha = 0f
+        systemUiHelper.hide()
         adapter = ImageViewerAdapter(viewLifecycleOwner) { systemUiHelper.toggle() }.apply {
             replace(paths)
         }

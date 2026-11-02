@@ -30,6 +30,25 @@ Android 单模块 Gradle 项目，模块 `app`。使用仓库自带 `./gradlew`�
 
 debug APK 预期输出位置：`app/build/outputs/apk/debug/app-debug.apk`。release 使用自己的签名，按 `signing.properties.example` 配置；签名材料不得提交。
 
+## 原生界面与语言资源
+
+Android 新工作区位于 `app/src/main/java/me/zhanghai/android/files/design/`，使用 Kotlin Compose 插件与 Material 3；现有文件浏览、设置和媒体后端继续通过 Views／ViewBinding 互操作。主导航壳固定 edge-to-edge 根坐标，导航从根窗口读取系统栏留白，避免隐藏旧文件页时整个内容区移动；不要叠加 Activity、Scaffold 与子页的重复留白。文件选择 Intent 不挂载主导航；切换页时保留文件 Fragment 的浏览状态，并管理隐藏页面的生命周期、焦点和安全窗口标志。
+
+Android 产品语言由 `settings/AppLanguage.kt` 与 `AppLanguagePolicy.kt` 管理，默认英文，简体中文资源放在 `values-zh-rCN`。新增产品字符串必须成对提供，保留上游已有语言资源但不把未维护语言列入产品语言选择。不要把文件名、路径或用户文本作为翻译键。
+
+Mac 主窗口与菜单栏工作面板位于 `mac/Sources/FileWeaveMacKit/MainWindowView.swift`，原生窗口生命周期由 `FileWeaveMenuBar/AppController.swift` 管理。菜单栏左键直接展示可操作内容，面板和窗口共用工作区状态；业务任务不能依赖某个页面是否显示，搜索快捷键只路由到当前窗口。状态区避免固定空槽，列表拥有受屏幕约束的可滚动空间。`Localization.swift`／`EnglishStrings.swift` 提供英文默认和中文切换，格式化参数须保留用户内容。
+
+局域网网页由 `LanSharePage.kt` 生成，语言参数与 Cookie 只影响界面文字，不扩大分享授权。相关检查命令：
+
+```sh
+python3 scripts/check-i18n.py
+./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug --console=plain
+swift test --package-path mac
+./mac/build.sh
+```
+
+使用隔离 QA applicationId／bundle identifier 和生成数据执行界面验收，避免覆盖已安装产品或启动第二份真实桥接／剪贴板监听。截图需要明确语言、主题、窗口／字体尺寸及真实或模拟状态；构建通过不能替代界面和生命周期验收。当前证据与尚未覆盖的设备环境见 [验证记录](VALIDATION.md)。
+
 ## 2026-10-20 初始化验证
 
 - `./gradlew --version`：通过，Gradle 9.6.0，Temurin JDK 21.0.11。
@@ -83,6 +102,24 @@ swift build && swift test     # 包与测试
 python3 -m unittest test_folder_key test_pairing test_bridge
 ```
 
+本地转录环境使用 `bash mac/Resources/setup-asr.sh`（从仓库根目录执行）。
+脚本支持 Python 3.12／3.13，固定 sherpa-onnx 1.13.8 与 numpy 2.5.4；
+虚拟环境因迁移或 Python 升级失效时只重建 `asr/venv`，保留模型与转录。
+失败时恢复原虚拟环境；用 `python -m pip` 避免旧 pip 启动脚本中的绝对路径。
+python.org 安装缺少 CA 文件时采用系统 `/etc/ssl/cert.pem`，仍校验 HTTPS。
+已有说话人模型默认从 `asr/models/speaker` 复用。
+
+摘要配置放在 `~/Library/Application Support/FileWeave/bailian.env`，权限设为 `0600`，
+包含 `DASHSCOPE_API_KEY` 和可选的 `DASHSCOPE_OPENAI_COMPATIBLE_URL`。
+也可使用 `FILEWEAVE_BAILIAN_ENV` 指定文件；不在代码中恢复私人项目路径回退。
+音频识别在本机执行，启用 AI 摘要后转录文本会发往此配置对应的服务。
+
+普通 `swift test --package-path mac` 不调用摘要 API。真实手机回归需显式设置
+`FILEWEAVE_LIVE_RECORDING_DIR` 为仓库外的私有目录，然后运行
+`swift test --package-path mac --filter TranscriptSyncTests`。
+该测试会经配对 HTTPS 下载一条已有转录的完整真实录音、重新识别并请求 AI 摘要，
+产出音频、转录、摘要与 `report.json`；不要提交这些个人数据。
+
 代码来源说明：录音面板与转录栈移植自作者本人的 HonorRecorderBar 项目（GPL-3 兼容，保留经验注释），其 ADB 通道、UDP 发现与 recbridge APK 不再使用。
 
 ## 0.3.1 自动操作开发分支
@@ -103,3 +140,8 @@ python3 -m unittest test_folder_key test_pairing test_bridge
 - 荣耀真机经验：无线 adb 端口会轮换，按 mDNS 等待重连；系统安装确认框需要亮屏解锁时才会显示，锁屏下会自动拒绝；`FLAG_SECURE` 页面无法截图与 uiautomator，需改用 Mac 侧观测。
 - **铁律（2026-10-23 用户定，含真实事故）：禁止在手机桌面/启动器上使用模拟点击**（input tap）。曾因盲点点击误触汽车控制小组件远程解锁了用户的汽车——桌面存在汽车、智能家居等有物理后果的小组件。启动应用只用 intent 方式（`monkey -p <包名> -c android.intent.category.LAUNCHER 1` 或解析 launcher activity 后 `am start`）；返回桌面用 HOME 键事件但不做任何点击。
 - 任何 `input tap` 前必须先有当前界面的新鲜截图并核对坐标，且只允许点在目标应用自己的界面上；禁止坐标盲扫与未确认前台应用时的点击；`FLAG_SECURE` 页面改用 debug instrumentation 进程内控件操作。
+
+
+## Mac CLI
+
+`swift build --package-path mac --product FileWeaveCLI` 构建开发命令，运行 `mac/.build/debug/FileWeaveCLI capabilities --pretty`；`mac/install.sh` 同时打包并安装 `fileweave`，独立链接脚本为 `mac/install-cli.sh`。命令参考见 [CLI.md](CLI.md)，测试在 `CLITests.swift`，复用本机合成 TLS fixture，不读取用户配对／转录；只读真机验收单独进行。

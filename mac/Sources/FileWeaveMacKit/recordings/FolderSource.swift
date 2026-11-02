@@ -11,6 +11,7 @@ import CryptoKit
 public struct SourceSnapshot {
     public var live: [Recording]
     public var trash: [Recording]
+    public var recordingsEnabled: Bool = true
 
     public init(live: [Recording], trash: [Recording]) {
         self.live = live
@@ -29,6 +30,8 @@ public protocol RecordingSource {
     ///
     /// 配对是用户亲手批准过的，记录里必有名字，所以不是 Optional。
     var identity: String { get }
+    var storageIdentity: String { get }
+    func storageCapacity() throws -> PhoneStorageCapacity?
 
     /// 最轻量的连通性探测（GET /v1/status），重连判定用
     func uploadTranscript(path: String, text: String) throws
@@ -43,8 +46,10 @@ public protocol RecordingSource {
 }
 
 public extension RecordingSource {
+    var storageIdentity: String { identity }
+    func storageCapacity() throws -> PhoneStorageCapacity? { nil }
     func uploadTranscript(path: String, text: String) throws {
-        throw SourceError.server("设备不支持转录同步")
+        throw SourceError.server(L("设备不支持转录同步"))
     }
 }
 
@@ -54,7 +59,7 @@ public enum SourceError: LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .noSource: return "没有可用的配对设备"
+        case .noSource: return L("没有可用的配对设备")
         case .server(let m): return m
         }
     }
@@ -230,6 +235,46 @@ public enum FolderDiscovery {
     }
 }
 
+// MARK: - 连接诊断
+
+/// 一轮「发现 + 配对匹配」没连上时的原因。给提示区当文案用：
+/// 每一档对应用户的一个不同动作，不能合并成一句「未连接」。
+public enum FolderLinkDiagnosis: Equatable, Sendable {
+    /// 一条带 folderFp 的配对记录都没有：从没配对过，或配对了没开过共享。
+    case notPaired
+    /// 有配对记录，但局域网里没有任何广播：手机不在、锁屏断流或共享关了。
+    case phoneOffline
+    /// 有广播，但指纹对不上任何配对记录：手机重装 / 重置过共享密钥。
+    case pairingMismatch
+    /// 广播里有配对过的那台，但探测连不通：刚切网、休眠刚醒等暂时状态。
+    case unreachable
+
+    /// 没能连上时，给用户一句能照着做的话。
+    public var hint: String {
+        switch self {
+        case .notPaired:
+            return L("还没和手机配对：在手机 FileWeave 里与这台 Mac 配对，并打开共享文件夹")
+        case .phoneOffline:
+            return L("手机不在线：确认手机 FileWeave 在运行、共享文件夹开着，且和这台 Mac 连的是同一个 Wi-Fi")
+        case .pairingMismatch:
+            return L("发现了手机，但共享密钥已更换（手机重装或重新配对过）：手机 FileWeave 开着时会自动重新配对，稍等片刻；一直不恢复就在手机上重开共享文件夹")
+        case .unreachable:
+            return L("手机就在网络里，但暂时连不上：稍后会自动重试；一直失败就在手机上重开共享文件夹")
+        }
+    }
+}
+
+/// `discoverPairedWithDiagnosis` 的返回值。连上时 diagnosis 为 nil。
+public struct FolderDiscoveryOutcome: Sendable {
+    public let source: FileWeaveFolderSource?
+    public let diagnosis: FolderLinkDiagnosis?
+
+    public init(source: FileWeaveFolderSource?, diagnosis: FolderLinkDiagnosis?) {
+        self.source = source
+        self.diagnosis = diagnosis
+    }
+}
+
 // MARK: - 文件夹共享通道
 
 /// 走手机 FileWeave 的「共享文件夹」服务：HTTPS + 证书固定 + Bearer。
@@ -250,6 +295,7 @@ public final class FileWeaveFolderSource: RecordingSource, @unchecked Sendable {
     public var displayName: String { deviceName }
     public var detail: String { "FileWeave \(host):\(port)" }
     public var identity: String { deviceName }
+    public var storageIdentity: String { fp }
 
     private let session: URLSession
 
@@ -281,6 +327,18 @@ public final class FileWeaveFolderSource: RecordingSource, @unchecked Sendable {
         let model: String?
         let files: Int?
         let root: String?
+        let storage: PhoneStorageCapacity?
+
+        private enum CodingKeys: String, CodingKey { case proto, model, files, root, storage }
+        init(from decoder: Decoder) throws {
+            let values = try decoder.container(keyedBy: CodingKeys.self)
+            proto = try values.decodeIfPresent(Int.self, forKey: .proto)
+            model = try values.decodeIfPresent(String.self, forKey: .model)
+            files = try values.decodeIfPresent(Int.self, forKey: .files)
+            root = try values.decodeIfPresent(String.self, forKey: .root)
+            // A future/malformed optional capacity field must not break the connectivity probe.
+            storage = try? values.decode(PhoneStorageCapacity.self, forKey: .storage)
+        }
     }
 
     struct TreeItem: Decodable {
@@ -296,6 +354,7 @@ public final class FileWeaveFolderSource: RecordingSource, @unchecked Sendable {
     struct TreeResponse: Decodable {
         let ok: Bool
         let items: [TreeItem]
+        let enabled: Bool?
     }
 
     struct ActionResponse: Decodable {
@@ -309,7 +368,7 @@ public final class FileWeaveFolderSource: RecordingSource, @unchecked Sendable {
         let data = Data(text.utf8)
         guard data.count <= 1024 * 1024,
               let url = Self.endpointURL(host: host, port: port, path: "/v1/transcript", query: ["path": path]) else {
-            throw SourceError.server("转录文本过大或路径无效")
+            throw SourceError.server(L("转录文本过大或路径无效"))
         }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -320,7 +379,7 @@ public final class FileWeaveFolderSource: RecordingSource, @unchecked Sendable {
         let (body, response) = try session.dataTaskSync(request)
         guard (response as? HTTPURLResponse)?.statusCode == 200,
               let result = try? JSONDecoder().decode(ActionResponse.self, from: body), result.ok else {
-            throw SourceError.server("转录已保存在 Mac，等待同步到手机")
+            throw SourceError.server(L("转录已保存在 Mac，等待同步到手机"))
         }
     }
 
@@ -343,10 +402,19 @@ public final class FileWeaveFolderSource: RecordingSource, @unchecked Sendable {
         return try Self.snapshot(fromTree: data)
     }
 
+    public func storageCapacity() throws -> PhoneStorageCapacity? {
+        try Self.capacity(fromStatus: get("/v1/status", timeout: 5))
+    }
+
+    static func capacity(fromStatus data: Data) throws -> PhoneStorageCapacity? {
+        let capacity = try JSONDecoder().decode(StatusResponse.self, from: data).storage
+        return capacity?.isValid == true ? capacity : nil
+    }
+
     /// `/v1/tree` JSON → 快照。抽成纯函数是为了单测（毫秒→Date、回收站拆分）。
     static func snapshot(fromTree data: Data) throws -> SourceSnapshot {
         let decoded = try JSONDecoder().decode(TreeResponse.self, from: data)
-        guard decoded.ok else { throw SourceError.server("手机端返回了失败") }
+        guard decoded.ok else { throw SourceError.server(L("手机端返回了失败")) }
 
         var live: [Recording] = []
         var trash: [Recording] = []
@@ -362,42 +430,44 @@ public final class FileWeaveFolderSource: RecordingSource, @unchecked Sendable {
             else { continue }
             if rec.isTrashed { trash.append(rec) } else { live.append(rec) }
         }
-        return SourceSnapshot(live: live, trash: trash)
+        var snapshot = SourceSnapshot(live: live, trash: trash)
+        snapshot.recordingsEnabled = decoded.enabled ?? true
+        return snapshot
     }
 
     public func trash(_ rec: Recording) throws -> String {
         // 必须带 id：手机端写操作靠 documentId 定位，不按路径回找
         guard let rid = rec.remoteId else {
-            throw SourceError.server("这条记录没有手机端标识，先刷新一次")
+            throw SourceError.server(L("这条记录没有手机端标识，先刷新一次"))
         }
         let body = try JSONSerialization.data(
             withJSONObject: ["id": rid, "path": rec.filePath])
         let data = try post("/v1/trash", body: body)
         let decoded = try JSONDecoder().decode(ActionResponse.self, from: data)
         guard decoded.ok, let dest = decoded.trashPath else {
-            throw SourceError.server("移入回收站失败")
+            throw SourceError.server(L("移入回收站失败"))
         }
         return dest
     }
 
     public func restore(_ rec: Recording) throws {
         guard let from = rec.trashPath else {
-            throw SourceError.server("这条已经不在手机回收站里了")
+            throw SourceError.server(L("这条已经不在手机回收站里了"))
         }
         guard let rid = rec.remoteId else {
-            throw SourceError.server("这条记录没有手机端标识，先刷新一次")
+            throw SourceError.server(L("这条记录没有手机端标识，先刷新一次"))
         }
         let body = try JSONSerialization.data(
             withJSONObject: ["id": rid, "path": from, "to": rec.remotePath])
         let data = try post("/v1/restore", body: body)
         let decoded = try JSONDecoder().decode(ActionResponse.self, from: data)
-        guard decoded.ok else { throw SourceError.server("还原失败") }
+        guard decoded.ok else { throw SourceError.server(L("还原失败")) }
     }
 
     public func download(_ rec: Recording, to url: URL) throws -> URL {
         guard let target = Self.endpointURL(host: host, port: port, path: "/v1/file",
                                             query: ["path": rec.filePath]) else {
-            throw SourceError.server("下载地址拼不出来")
+            throw SourceError.server(L("下载地址拼不出来"))
         }
         var req = URLRequest(url: target)
         req.timeoutInterval = 300
@@ -407,17 +477,17 @@ public final class FileWeaveFolderSource: RecordingSource, @unchecked Sendable {
         // 契约：200 全量 / 206 Range。这里从不发 Range，所以 206 只在服务端异常时出现，
         // 且必须证明它恰好是「整份文件」才接受，否则宁可失败也不写半份。
         guard let http = resp as? HTTPURLResponse else {
-            throw SourceError.server("拉取音频失败：手机未返回 HTTP 响应")
+            throw SourceError.server(L("拉取音频失败：手机未返回 HTTP 响应"))
         }
         if http.statusCode == 206 {
             let header = http.value(forHTTPHeaderField: "Content-Range") ?? ""
             guard let range = Self.parseContentRange(header),
                   range.start == 0, range.end + 1 == range.total,
                   Int64(data.count) == range.total else {
-                throw SourceError.server("Range 响应不完整（收到 \(data.count) 字节）")
+                throw SourceError.server(L("Range 响应不完整（收到 {0} 字节）", data.count))
             }
         } else if http.statusCode != 200 {
-            throw SourceError.server("拉取音频失败：手机返回 HTTP \(http.statusCode)，请刷新后重试")
+            throw SourceError.server(L("拉取音频失败：手机返回 HTTP {0}，请刷新后重试", http.statusCode))
         }
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -435,23 +505,48 @@ public final class FileWeaveFolderSource: RecordingSource, @unchecked Sendable {
     public static func discoverPaired(store: PairedDeviceStore = .shared, deviceHash: String? = nil,
                                       browse: (TimeInterval) -> [FolderDiscovery.Candidate] =
                                           { FolderDiscovery.browse(timeout: $0) }) -> FileWeaveFolderSource? {
+        discoverPairedWithDiagnosis(store: store, deviceHash: deviceHash, browse: browse).source
+    }
+
+    /// 同 `discoverPaired`，但把「为什么没连上」也带回来。
+    ///
+    /// 「手机不在线」和「手机在广播、但配对失效」对用户的下一步动作完全不同
+    /// （前者去开手机，后者必须在手机上重新配对）—— 合并成一个 nil
+    /// 就只能给一句含糊的「未连接」，界面便只能说「正在重新连接」骗人。
+    public static func discoverPairedWithDiagnosis(
+        store: PairedDeviceStore = .shared, deviceHash: String? = nil,
+        browse: (TimeInterval) -> [FolderDiscovery.Candidate] =
+            { FolderDiscovery.browse(timeout: $0) }) -> FolderDiscoveryOutcome {
         let records = store.devices().filter { record in
             deviceHash == nil || SHA256.hash(data: Data(record.token.utf8)).map { String(format: "%02x", $0) }.joined() == deviceHash
         }
         let byFp = Dictionary(grouping: records.filter { fp in fp.folderFp != nil },
                               by: { $0.folderFp! })
-        guard !byFp.isEmpty else { return nil }
+        guard !byFp.isEmpty else { return FolderDiscoveryOutcome(source: nil, diagnosis: .notPaired) }
 
-        for c in browse(2.0) {
+        let peers: [FolderDiscovery.Candidate]
+        if store === PairedDeviceStore.shared,
+           let data = try? Data(contentsOf: MacPaths.state.appendingPathComponent("active-peers.json")) {
+            peers = FolderDiscovery.recentPeers(data: data, records: records)
+        } else { peers = [] }
+        let candidates = browse(2.0) + peers
+        guard !candidates.isEmpty else { return FolderDiscoveryOutcome(source: nil, diagnosis: .phoneOffline) }
+
+        var matchedAny = false
+        for c in candidates {
             guard let matches = byFp[c.fp], let record = matches.first else { continue }
+            matchedAny = true
             let source = FileWeaveFolderSource(host: c.host, port: c.port,
                                                fp: c.fp, token: record.token,
                                                deviceName: record.name)
             if source.probe() {
-                return source
+                return FolderDiscoveryOutcome(source: source, diagnosis: nil)
             }
         }
-        return nil
+        // 广播里有配对过的那台但探测失败（锁屏断网、刚切 Wi-Fi），和
+        // 广播的指纹全都对不上（手机重装 / 重置过共享密钥），必须分开报。
+        let diagnosis: FolderLinkDiagnosis = matchedAny ? .unreachable : .pairingMismatch
+        return FolderDiscoveryOutcome(source: nil, diagnosis: diagnosis)
     }
 
     // MARK: HTTP
@@ -485,21 +580,21 @@ public final class FileWeaveFolderSource: RecordingSource, @unchecked Sendable {
 
     private func get(_ path: String, timeout: TimeInterval) throws -> Data {
         guard let url = Self.endpointURL(host: host, port: port, path: path) else {
-            throw SourceError.server("请求 \(path) 失败")
+            throw SourceError.server(L("请求 {0} 失败", path))
         }
         var req = URLRequest(url: url)
         req.timeoutInterval = timeout
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         let (data, resp) = try session.dataTaskSync(req)
         guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
-            throw SourceError.server("请求 \(path) 失败")
+            throw SourceError.server(L("请求 {0} 失败", path))
         }
         return data
     }
 
     private func post(_ path: String, body: Data) throws -> Data {
         guard let url = Self.endpointURL(host: host, port: port, path: path) else {
-            throw SourceError.server("请求 \(path) 失败")
+            throw SourceError.server(L("请求 {0} 失败", path))
         }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
@@ -512,7 +607,7 @@ public final class FileWeaveFolderSource: RecordingSource, @unchecked Sendable {
         if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
             let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
             let detail = object?["error"] as? String
-            throw SourceError.server("请求 \(path) 失败：\(detail ?? String(http.statusCode))")
+            throw SourceError.server(L("请求 {0} 失败：{1}", path, detail ?? String(http.statusCode)))
         }
         return data
     }
@@ -523,7 +618,7 @@ public final class FileWeaveFolderSource: RecordingSource, @unchecked Sendable {
 /// 与 Android 端 BridgeClient.kt 同思路的信任判定：
 /// 拿 leaf 证书 DER 算 sha256，和配对指纹逐字节比对；不一致直接拒绝。
 /// 主机名不参与判定 —— 自签证书的 CN 什么都不是，指纹才是身份。
-final class PinningDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+class PinningDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
 
     private let fp: String
 
@@ -580,7 +675,7 @@ extension URLSession {
         box.sem.wait()
         if let err = box.error { throw err }
         guard let data = box.data, let resp = box.response else {
-            throw SourceError.server("没有拿到响应")
+            throw SourceError.server(L("没有拿到响应"))
         }
         return (data, resp)
     }
@@ -593,7 +688,7 @@ extension URLSession {
     }
 }
 
-struct PhoneFile: Decodable, Identifiable {
+struct PhoneFile: Decodable, Identifiable, Hashable {
     let name: String
     let directory: Bool
     let size: Int64
@@ -607,14 +702,14 @@ struct PhoneFileListing: Decodable {
 extension FileWeaveFolderSource {
     private func storageRequest(path: String, selected: Bool, file: Bool) throws -> URLRequest {
         guard let url = Self.endpointURL(host: host, port: port, path: file ? "/v1/storage/file" : "/v1/storage",
-                                        query: ["path": path, "selected": selected ? "1" : "0"]) else { throw SourceError.server("文件地址无效") }
+                                        query: ["path": path, "selected": selected ? "1" : "0"]) else { throw SourceError.server(L("文件地址无效")) }
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.timeoutInterval = file ? 300 : 20
         return request
     }
     func sendClipboard(_ text: String) async throws {
-        guard let url = Self.endpointURL(host: host, port: port, path: "/v1/clipboard") else { throw SourceError.server("剪贴板地址无效") }
+        guard let url = Self.endpointURL(host: host, port: port, path: "/v1/clipboard") else { throw SourceError.server(L("剪贴板地址无效")) }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.timeoutInterval = 5
@@ -622,22 +717,101 @@ extension FileWeaveFolderSource {
         request.setValue("text/plain; charset=utf-8", forHTTPHeaderField: "Content-Type")
         request.httpBody = Data(text.utf8)
         let (_, response) = try await session.data(for: request)
-        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw SourceError.server("等待手机剪贴板连接") }
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw SourceError.server(L("等待手机剪贴板连接")) }
     }
     func listStorage(path: String, selected: Bool) async throws -> PhoneFileListing {
         let (data, response) = try await session.data(for: storageRequest(path: path, selected: selected, file: false))
-        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw SourceError.server("无法读取手机目录，请检查共享开关和文件访问权限") }
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw SourceError.server(L("无法读取手机目录，请检查共享开关和文件访问权限")) }
         let listing = try JSONDecoder().decode(PhoneFileListing.self, from: data)
-        guard listing.items.allSatisfy({ !$0.name.isEmpty && $0.name != "." && $0.name != ".." && !$0.name.contains("/") && !$0.name.contains("\\") && !$0.name.contains("\0") }) else { throw SourceError.server("手机返回了无效文件名") }
+        guard listing.items.allSatisfy({ !$0.name.isEmpty && $0.name != "." && $0.name != ".." && !$0.name.contains("/") && !$0.name.contains("\\") && !$0.name.contains("\0") }) else { throw SourceError.server(L("手机返回了无效文件名")) }
         return listing
     }
     func downloadStorage(path: String, selected: Bool, to destination: URL) async throws {
         let (temporary, response) = try await session.download(for: storageRequest(path: path, selected: selected, file: true))
         defer { try? FileManager.default.removeItem(at: temporary) }
         guard let http = response as? HTTPURLResponse, http.statusCode == 200,
-              http.value(forHTTPHeaderField: "Content-Type") == "application/octet-stream" else { throw SourceError.server("下载未完成，文件可能已取消共享") }
+              http.value(forHTTPHeaderField: "Content-Type") == "application/octet-stream" else { throw SourceError.server(L("下载未完成，文件可能已取消共享")) }
         let size = (try FileManager.default.attributesOfItem(atPath: temporary.path)[.size] as? NSNumber)?.int64Value
-        guard size == http.expectedContentLength else { throw SourceError.server("文件传输不完整，请重试") }
+        guard size == http.expectedContentLength else { throw SourceError.server(L("文件传输不完整，请重试")) }
         try FileManager.default.moveItem(at: temporary, to: destination)
+    }
+}
+
+// A separate ephemeral download keeps speculative preview traffic out of explicit
+// transfer tasks, with the same pin and redirect policy and a hard disk budget.
+private final class PreviewDownloadDelegate: PinningDelegate, URLSessionDownloadDelegate, @unchecked Sendable {
+    let limit: Int64
+    init(fp: String, limit: Int64) { self.limit = limit; super.init(fp: fp) }
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
+                    didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+        if totalBytesWritten > limit || totalBytesExpectedToWrite > limit { downloadTask.cancel() }
+    }
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {}
+}
+extension FileWeaveFolderSource {
+    func downloadPreview(path: String, selected: Bool, to destination: URL, limit: Int64) async throws {
+        try await downloadPinnedPreview(request: storageRequest(path: path, selected: selected, file: true), to: destination, limit: limit)
+    }
+    func downloadScreenshot(path: String, to destination: URL, limit: Int64) async throws {
+        try await downloadPinnedPreview(request: screenshotRequest(endpoint: "/v1/screenshots/file", query: ["path": path]), to: destination, limit: limit)
+    }
+    private func downloadPinnedPreview(request: URLRequest, to destination: URL, limit: Int64) async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForResource = 90
+        let previewSession = URLSession(configuration: configuration, delegate: PreviewDownloadDelegate(fp: fp, limit: limit), delegateQueue: nil)
+        defer { previewSession.invalidateAndCancel() }
+        let (temporary, response) = try await previewSession.download(for: request)
+        defer { try? FileManager.default.removeItem(at: temporary) }
+        try Task.checkCancellation()
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+              http.value(forHTTPHeaderField: "Content-Type") == "application/octet-stream" else { throw SourceError.server(L("手机已停止共享")) }
+        let size = (try FileManager.default.attributesOfItem(atPath: temporary.path)[.size] as? NSNumber)?.int64Value
+        guard let size, size <= limit, size == http.expectedContentLength else { throw SourceError.server(L("文件传输不完整，请重试")) }
+        try FileManager.default.moveItem(at: temporary, to: destination)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
+    }
+}
+
+extension FileWeaveFolderSource {
+    private func screenshotRequest(endpoint: String, query: [String: String] = [:]) throws -> URLRequest {
+        guard let url = Self.endpointURL(host: host, port: port, path: endpoint, query: query) else { throw SourceError.server(L("文件地址无效")) }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 12
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        return request
+    }
+    func listScreenshots() async throws -> [PhoneScreenshot] {
+        let (data, response) = try await session.data(for: screenshotRequest(endpoint: "/v1/screenshots"))
+        guard let http = response as? HTTPURLResponse else { throw SourceError.server(L("等待手机连接")) }
+        if http.statusCode == 404 { throw SourceError.server(L("请更新手机端 FileWeave 以使用截图管理。")) }
+        guard http.statusCode == 200 else { throw SourceError.server(L("手机截图不可用，请检查文件共享与所有文件访问权限。")) }
+        return try PhoneScreenshot.decodeListing(data)
+    }
+    func changeScreenshot(_ item: PhoneScreenshot, restore: Bool) async throws {
+        var request = try screenshotRequest(endpoint: restore ? "/v1/screenshots/restore" : "/v1/screenshots/trash")
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body = ["id": item.id, "path": item.path]
+        if restore { body["to"] = item.path }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await session.data(for: request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200,
+              (try? JSONDecoder().decode(ActionResponse.self, from: data).ok) == true else {
+            throw SourceError.server(restore ? L("还原手机截图失败，原位置可能已有同名文件。") : L("移入手机回收站失败，原图仍保留在手机。"))
+        }
+    }
+}
+
+extension FolderDiscovery {
+    static func recentPeers(data: Data, records: [PairedDeviceRecord], now: Date = Date()) -> [Candidate] {
+        struct Peer: Decodable { let device: String; let host: String; let seen: Double }
+        guard let peers = try? JSONDecoder().decode([Peer].self, from: data) else { return [] }
+        let identities = Dictionary(grouping: records, by: { SHA256.hash(data: Data($0.token.utf8)).map { String(format: "%02x", $0) }.joined() })
+        return peers.compactMap { peer in
+            let age = now.timeIntervalSince1970 - peer.seen
+            guard age >= 0, age < 120, let record = identities[peer.device]?.first, let fp = record.folderFp,
+                  !peer.host.isEmpty, !peer.host.contains("/"), !peer.host.contains("\\") else { return nil }
+            return Candidate(name: record.name, host: peer.host, port: 8791, fp: fp)
+        }
     }
 }

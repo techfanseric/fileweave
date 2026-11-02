@@ -5,6 +5,8 @@
 
 package me.zhanghai.android.files.filelist
 
+import me.zhanghai.android.files.ui.ActionPanel
+import androidx.lifecycle.findViewTreeLifecycleOwner
 import android.text.TextUtils
 import android.view.View
 import android.view.ViewGroup
@@ -24,6 +26,7 @@ import me.zhanghai.android.files.coil.AppIconPackageName
 import me.zhanghai.android.files.compat.foregroundCompat
 import me.zhanghai.android.files.compat.getDrawableCompat
 import me.zhanghai.android.files.compat.isSingleLineCompat
+import me.zhanghai.android.files.compat.setGroupDividerEnabledCompat
 import me.zhanghai.android.files.databinding.FileItemGridBinding
 import me.zhanghai.android.files.databinding.FileItemListBinding
 import me.zhanghai.android.files.file.FileItem
@@ -80,6 +83,14 @@ class FileListAdapter(
 
     private var isSearching = false
 
+    var isRecentFiles = false
+        set(value) {
+            if (field == value) return
+            field = value
+            // Overlapping directory/recent results can otherwise reuse unchanged row details.
+            notifyItemRangeChanged(0, itemCount)
+        }
+
     var showDetails = true
         set(value) {
             field = value
@@ -101,7 +112,7 @@ class FileListAdapter(
         get() = _sortOptions
         set(value) {
             _sortOptions = value
-            if (!isSearching) {
+            if (!isSearching && !isRecentFiles) {
                 val sortedList = list.sortedWith(value.createComparator())
                 super.replace(sortedList, true)
                 rebuildFilePositionMap()
@@ -195,7 +206,7 @@ class FileListAdapter(
     fun replaceListAndIsSearching(list: List<FileItem>, isSearching: Boolean) {
         val clear = this.isSearching != isSearching
         this.isSearching = isSearching
-        val sortedList = if (!isSearching) list.sortedWith(sortOptions.createComparator()) else list
+        val sortedList = if (!isSearching && !isRecentFiles) list.sortedWith(sortOptions.createComparator()) else list
         super.replace(sortedList, clear)
         rebuildFilePositionMap()
     }
@@ -250,8 +261,11 @@ class FileListAdapter(
                 }
             }
             popupMenu = PopupMenu(menuButton.context, menuButton)
-                .apply { inflate(R.menu.file_item) }
-            menuButton.setOnClickListener { popupMenu.show() }
+                .apply {
+                    inflate(R.menu.file_item)
+                    menu.setGroupDividerEnabledCompat(true)
+                }
+            menuButton.contentDescription = menuButton.context.getString(R.string.fw_menu_more)
         }
     }
 
@@ -369,6 +383,16 @@ class FileListAdapter(
         }
         holder.nameText.text = file.name
         holder.descriptionText?.text = if (showDetails) file.listDescription(holder.itemLayout.context) else null
+        holder.locationText?.apply {
+            val parent = path.parent?.toString().orEmpty()
+            text = if (showDetails && isRecentFiles) {
+                RecentFileLocation.display(parent,
+                    android.os.Environment.getExternalStorageDirectory().path,
+                    context.getString(R.string.fw_internal_storage))
+            } else null
+            // The visual tail is compact; accessibility and Properties retain the complete path.
+            contentDescription = parent
+        }
         val isArchivePath = path.isArchivePath
         menu.findItem(R.id.action_fw_encrypt).isVisible = !isDirectory && !isArchivePath
         menu.findItem(R.id.action_fw_send_mac).isVisible = !isArchivePath
@@ -379,7 +403,7 @@ class FileListAdapter(
         menu.findItem(R.id.action_extract).isVisible = file.isArchiveFile
         menu.findItem(R.id.action_archive).isVisible = !isArchivePath
         menu.findItem(R.id.action_add_bookmark).isVisible = isDirectory
-        holder.popupMenu.setOnMenuItemClickListener {
+        val onAction: (android.view.MenuItem) -> Boolean = {
             when (it.itemId) {
                 R.id.action_fw_encrypt -> { listener.encryptFile(file); true }
                 R.id.action_lan_share -> { listener.shareOnLan(file); true }
@@ -435,10 +459,33 @@ class FileListAdapter(
                 else -> false
             }
         }
+        holder.menuButton.setOnClickListener {
+            val owner = holder.itemLayout.findViewTreeLifecycleOwner() ?: return@setOnClickListener
+            val snapshot = PopupMenu(holder.itemLayout.context, holder.menuButton).apply { inflate(R.menu.file_item) }.menu
+            fun copyState(source: android.view.Menu, target: android.view.Menu) {
+                for (index in 0 until source.size()) {
+                    val sourceItem = source.getItem(index)
+                    val targetItem = target.findItem(sourceItem.itemId) ?: continue
+                    targetItem.isVisible = sourceItem.isVisible
+                    targetItem.isEnabled = sourceItem.isEnabled
+                    targetItem.title = sourceItem.title
+                    if (sourceItem.hasSubMenu()) copyState(sourceItem.subMenu!!, targetItem.subMenu!!)
+                }
+            }
+            copyState(menu, snapshot)
+            ActionPanel(holder.itemLayout.context, owner, file.name, snapshot,
+                keepOpen = { it.itemId in setOf(R.id.action_delete, R.id.action_rename, R.id.action_archive,
+                    R.id.action_properties, R.id.action_open_with) },
+                isValid = { list.any { it.path == file.path } }) {
+                onAction(it)
+            }.show()
+        }
+
     }
 
     override fun getPopupText(view: View, position: Int): CharSequence {
         val file = getItem(position)
+        if (isRecentFiles) return file.name
         return when (sortOptions.by) {
             FileSortOptions.By.NAME -> file.name.take(1).uppercase(Locale.getDefault())
             FileSortOptions.By.TYPE -> file.extension.uppercase(Locale.getDefault())
@@ -476,6 +523,7 @@ class FileListAdapter(
         val badgeImage: ImageView,
         val nameText: TextView,
         val descriptionText: TextView?,
+        val locationText: TextView?,
         val menuButton: ImageButton
     ) : RecyclerView.ViewHolder(root) {
         constructor(binding: FileItemListBinding) : this(
@@ -491,6 +539,7 @@ class FileListAdapter(
             binding.badgeImage,
             binding.nameText,
             binding.descriptionText,
+            binding.locationText,
             binding.menuButton
         )
 
@@ -506,6 +555,7 @@ class FileListAdapter(
             binding.appIconBadgeImage,
             binding.badgeImage,
             binding.nameText,
+            null,
             null,
             binding.menuButton
         )

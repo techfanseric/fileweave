@@ -1,0 +1,9 @@
+<resources>
+    <string name="fw_document_previous">上一页</string><string name="fw_document_next">下一页</string>
+    <string name="fw_document_loading">加载中…</string><string name="fw_document_page">%1$d / %2$d</string><string name="fw_document_error">无法打开 PDF</string>
+    <string name="fw_audio_previous">上一首</string><string name="fw_audio_next">下一首</string><string name="fw_audio_pause">暂停</string><string name="fw_audio_play">播放</string><string name="fw_audio_speed">倍速</string><string name="fw_audio_queue">列表</string><string name="fw_audio_close">关闭</string>
+    <string name="fw_audio_error">无法播放 %1$s</string>
+    <string name="fw_text_edit">编辑</string>
+    <string name="fw_document_single_mode">逐页</string>
+    <string name="fw_document_continuous_mode">连续</string>
+</resources>

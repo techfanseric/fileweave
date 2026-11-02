@@ -1,0 +1,26 @@
+<resources>
+    <string name="fw_lan_running">正在共享</string>
+    <string name="fw_lan_review_heading">确认收到的内容</string>
+    <string name="fw_lan_session_note">同一局域网 · 停止共享后失效</string>
+    <string name="fw_lan_start_global">开始共享手机文件</string>
+    <string name="fw_lan_scope_global">手机内部存储 · 只读</string>
+    <string name="fw_lan_scope_selected">指定的 %1$d 项内容 · 只读</string>
+    <string name="fw_lan_scope_text_only">仅剪贴板文本</string>
+    <string name="fw_lan_scope_empty">当前未分享文件或文本</string>
+    <string name="fw_lan_change_scope">更改分享范围</string>
+    <string name="fw_lan_choose_other_content">选择其它分享内容</string>
+    <string name="fw_lan_pick_folder">选择文件夹</string>
+    <string name="fw_lan_only_clipboard_text">仅剪贴板文本</string>
+    <string name="fw_lan_action_copied_files">剪贴板文件</string>
+    <string name="fw_lan_append_text">附加剪贴板文本</string>
+    <string name="fw_lan_copy_access_code">复制访问码</string>
+    <string name="fw_lan_access_code_copied">访问码已复制</string>
+    <string name="fw_lan_more_items">另有 %1$d 项</string>
+    <string name="fw_lan_clear_text">清除已分享文本</string>
+    <string name="fw_lan_notes_show">分享说明</string>
+    <string name="fw_lan_review_details">查看收到的详细内容</string>
+    <string name="fw_lan_review_less">收起详情</string>
+    <string name="fw_lan_scope_help">手机存储仅包含应用可访问的内部共享存储，不包含应用私有数据或保险库中的解密内容。选择文件、文件夹或剪贴板内容，会替换当前分享范围。\n\n请在同一局域网中用浏览器访问。分享只读，HTTP 传输未加密。链接在停止共享、服务停止或新分享替换后失效。\n\n剪贴板文本是你主动附加时的快照，后续复制不会自动分享。来自其它应用的文件使用临时缓存，分享结束后会删除。</string>
+    <string name="fw_lan_global_storage">手机存储</string>
+    <string name="fw_lan_global_permission_required">请先在系统设置允许文件存储访问，再共享手机存储。</string>
+</resources>

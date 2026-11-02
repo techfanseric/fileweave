@@ -17,6 +17,7 @@ object NavigationItemListLiveData : MediatorLiveData<List<NavigationItem?>>() {
         addSource(me.zhanghai.android.files.ftpserver.FtpServerService.stateLiveData) { loadValue() }
         addSource(me.zhanghai.android.files.webdavserver.WebDavServerService.stateLiveData) { loadValue() }
         addSource(me.zhanghai.android.files.folderbridge.PairedShares.changes) { loadValue() }
+        addSource(Settings.SCREENSHOT_SYNC) { loadValue() }
         addSource(Settings.STORAGES) { loadValue() }
         addSource(RootAccessLiveData) { loadValue() }
         addSource(StorageVolumeListLiveData) { loadValue() }

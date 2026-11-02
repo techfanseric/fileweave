@@ -60,6 +60,15 @@ class PlayerGestureInstrumentation : Instrumentation() {
                         check(!playerView.isControllerFullyVisible) { "Gesture revealed controls" }
                         check(current.findViewById<View>(R.id.video_toolbar).visibility == View.GONE)
                     }
+                    // Feedback remains in a compact bottom dock while a gesture is active.
+                    val nowPreview = SystemClock.uptimeMillis()
+                    send(gestures, nowPreview, MotionEvent.ACTION_DOWN, .4f, .5f)
+                    send(gestures, nowPreview, MotionEvent.ACTION_MOVE, .6f, .5f)
+                    val feedback = current.findViewById<View>(R.id.video_feedback)
+                    check(feedback.visibility == View.VISIBLE)
+                    check(current.findViewById<android.widget.ProgressBar>(R.id.video_feedback_progress).progress > 0)
+                    send(gestures, nowPreview, MotionEvent.ACTION_CANCEL, .6f, .5f)
+                    check(feedback.visibility == View.GONE)
                     p.play()
                     val before = p.currentPosition
                     swipe(gestures, .4f, .5f, .7f, .5f, MotionEvent.ACTION_CANCEL)
@@ -82,12 +91,56 @@ class PlayerGestureInstrumentation : Instrumentation() {
                     check(abs(p.currentPosition - 50000) < 1000 && !p.playWhenReady)
                 }
                 Thread.sleep(800)
+                val previewTime = SystemClock.uptimeMillis()
+                runOnMainSync {
+                    send(gestures, previewTime, MotionEvent.ACTION_DOWN, .4f, .5f)
+                    send(gestures, previewTime, MotionEvent.ACTION_MOVE, .6f, .5f)
+                }
+                screenshot("video-feedback-${if (landscape) "landscape" else "portrait"}")
+                runOnMainSync {
+                    val feedback = current.findViewById<View>(R.id.video_feedback)
+                    check(feedback.visibility == View.VISIBLE)
+                    check(feedback.top >= gestures.height * .65f && feedback.height < gestures.height * .25f) { "Feedback must remain compact and at the bottom" }
+                    send(gestures, previewTime, MotionEvent.ACTION_CANCEL, .6f, .5f)
+                }
                 runOnMainSync {
                     val p = checkNotNull(playerView.player)
                     doubleTap(gestures, .8f)
                     check(abs(p.currentPosition - 60000) < 1000)
                     check(!playerView.isControllerFullyVisible)
                     playerView.showController()
+                    // Lock is available with the playback menu and blocks every playback gesture.
+                    current.findViewById<View>(R.id.video_lock).performClick()
+                    check(gestures.controlsLocked && !playerView.useController)
+                    check(current.findViewById<View>(R.id.video_toolbar).visibility == View.GONE)
+                    val lockedPosition = p.currentPosition
+                    val lockedBrightness = current.window.attributes.screenBrightness
+                    val lockedVolume = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
+                    swipe(gestures, .4f, .5f, .8f, .5f)
+                    swipe(gestures, .15f, .6f, .15f, .3f)
+                    swipe(gestures, .85f, .6f, .85f, .3f)
+                    doubleTap(gestures, .8f)
+                    check(abs(p.currentPosition - lockedPosition) < 1000 && !p.playWhenReady)
+                    check(current.window.attributes.screenBrightness == lockedBrightness)
+                    check(audio.getStreamVolume(AudioManager.STREAM_MUSIC) == lockedVolume)
+                    check(current.findViewById<View>(R.id.video_feedback).visibility == View.GONE)
+                    current.findViewById<View>(R.id.video_unlock).performClick()
+                    check(!gestures.controlsLocked && playerView.useController)
+                    playerView.showController()
+                }
+                screenshot("video-controls-${if (landscape) "landscape" else "portrait"}")
+                val lockPoint = IntArray(2)
+                runOnMainSync {
+                    current.findViewById<View>(R.id.video_lock).getLocationOnScreen(lockPoint)
+                    current.findViewById<View>(R.id.video_lock).performClick()
+                }
+                screenshot("video-locked-${if (landscape) "landscape" else "portrait"}")
+                runOnMainSync {
+                    val unlock = current.findViewById<View>(R.id.video_unlock)
+                    val point = IntArray(2)
+                    unlock.getLocationOnScreen(point)
+                    check(abs(point[0] - lockPoint[0]) <= 1 && abs(point[1] - lockPoint[1]) <= 1) { "Unlock moved away from the lock button: ${lockPoint.toList()} -> ${point.toList()}" }
+                    unlock.performClick()
                 }
                 Thread.sleep(3000)
                 runOnMainSync {
@@ -101,7 +154,7 @@ class PlayerGestureInstrumentation : Instrumentation() {
                 Thread.sleep(200)
             }
             finish(Activity.RESULT_OK, Bundle().apply { putString("stream",
-                "portrait + landscape: seek from all regions, feedback-only UI, pause/resume, cancel, brightness, volume, double tap ±10s, auto-hide and exit during drag: PASS\n") })
+                "portrait + landscape: seek from all regions, feedback-only UI, pause/resume, cancel, brightness, volume, double tap ±10s, bottom feedback, control lock/unlock, auto-hide and exit during drag: PASS\n") })
         } catch (error: Throwable) {
             (currentScreen ?: activity)?.let { runOnMainSync { it.finish() } }
             finish(Activity.RESULT_CANCELED, Bundle().apply { putString("stream", "FAILED: ${error.stackTraceToString()}\n") })
@@ -120,6 +173,13 @@ class PlayerGestureInstrumentation : Instrumentation() {
             Thread.sleep(100)
         }
         check(ready) { "Player/window did not become ready" }
+    }
+    private fun screenshot(name: String) {
+        waitForIdleSync()
+        Thread.sleep(150)
+        val bitmap = checkNotNull(uiAutomation.takeScreenshot())
+        try { java.io.File(targetContext.cacheDir, "qa-$name.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) } }
+        finally { bitmap.recycle() }
     }
     private fun swipe(root: View, x: Float, y: Float, toX: Float, toY: Float, end: Int = MotionEvent.ACTION_UP) {
         val now = SystemClock.uptimeMillis()

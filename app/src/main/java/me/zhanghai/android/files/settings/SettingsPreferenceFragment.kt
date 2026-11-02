@@ -5,7 +5,6 @@
 
 package me.zhanghai.android.files.settings
 
-import android.os.Build
 import android.os.Bundle
 import me.zhanghai.android.files.R
 import me.zhanghai.android.files.theme.custom.CustomThemeHelper
@@ -21,11 +20,9 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
         addPreferencesFromResource(R.xml.settings)
 
         localePreference = preferenceScreen.findPreference(getString(R.string.pref_key_locale))!!
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            localePreference.setApplicationLocalesPre33 = { locales ->
-                val activity = requireActivity() as SettingsActivity
-                activity.setApplicationLocalesPre33(locales)
-            }
+        localePreference.setApplicationLocales = { locales ->
+            val activity = requireActivity() as SettingsActivity
+            activity.setApplicationLocales(locales)
         }
     }
 
@@ -66,11 +63,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
 
     override fun onResume() {
         super.onResume()
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            // Refresh locale preference summary because we aren't notified for an external change
-            // between system default and the locale that's the current system default.
-            localePreference.notifyChanged()
-        }
+        // Also refresh after Android's system app-language settings changed while we were away.
+        localePreference.value = AppLanguage.selected(requireContext())
     }
 }

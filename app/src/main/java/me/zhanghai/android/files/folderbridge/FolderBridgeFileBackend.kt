@@ -19,7 +19,10 @@ import java.io.IOException
  * * 条目的 id 即其相对路径（回收站内条目从 .Trash 起算）；内核对 id 做的形状校验
  *   （非空、无 NUL、无 “..” 段）与之相容。
  */
-class FolderBridgeFileBackend(root: File) : FolderBridgeBackend {
+class FolderBridgeFileBackend(
+    root: File,
+    private val acceptsName: (String) -> Boolean = FolderBridgeDefaults::isAudioName
+) : FolderBridgeBackend {
 
     /** 规范化后的共享根目录；构造失败（根不可访问）会让后续所有解析失败并返回未命中。 */
     private val rootDir: File = try {
@@ -56,7 +59,7 @@ class FolderBridgeFileBackend(root: File) : FolderBridgeBackend {
         for (child in children) {
             val name = child.name
             when {
-                child.isFile && FolderBridgeDefaults.isAudioName(name) -> out.add(FolderBridgeItem(
+                child.isFile && acceptsName(name) -> out.add(FolderBridgeItem(
                     id = if (prefix.isEmpty()) name else "$prefix/$name",
                     path = if (prefix.isEmpty()) name else "$prefix/$name",
                     size = child.length(),
@@ -89,7 +92,7 @@ class FolderBridgeFileBackend(root: File) : FolderBridgeBackend {
         for (child in children) {
             val name = child.name
             when {
-                child.isFile && FolderBridgeDefaults.isAudioName(name) -> {
+                child.isFile && acceptsName(name) -> {
                     val rel = if (relPrefix.isEmpty()) name else "$relPrefix/$name"
                     out.add(FolderBridgeItem(
                         // 回收站内条目的 id 从 .Trash 起算，restore 靠它找回文件。

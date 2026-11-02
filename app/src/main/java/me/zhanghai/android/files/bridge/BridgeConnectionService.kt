@@ -4,9 +4,6 @@ import android.app.Notification
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.content.BroadcastReceiver
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.os.IBinder
@@ -29,19 +26,20 @@ import me.zhanghai.android.files.R
 import me.zhanghai.android.files.app.NotificationIds
 import me.zhanghai.android.files.app.application
 import me.zhanghai.android.files.compat.mainExecutorCompat
-import me.zhanghai.android.files.settings.Settings
+import me.zhanghai.android.files.folderbridge.FolderBridgeReceiver
+import me.zhanghai.android.files.folderbridge.FolderBridgeServer
+import me.zhanghai.android.files.folderbridge.FolderBridgeService
 import me.zhanghai.android.files.util.NotificationChannelTemplate
 import me.zhanghai.android.files.util.NotificationTemplate
 import me.zhanghai.android.files.util.createIntent
-import me.zhanghai.android.files.util.showToast
 import me.zhanghai.android.files.util.valueCompat
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Ambient, always-on connection to the paired Mac: discovery, zero-touch pairing,
- * file list refresh and clipboard synchronisation run here so that sharing works
- * without visiting any page. Users opt out with the settings switch (default on)
- * or the notification action; the connection never wakes on its own after that.
+ * Ambient connection to the paired Mac, alive for as long as the app is: discovery,
+ * zero-touch pairing, file list refresh and clipboard synchronisation run here so that
+ * sharing works without visiting any page. There is deliberately no switch for it —
+ * the app running is the only condition.
  *
  * The service owns the long-lived client and its state is published as LiveData
  * for the UI; user-triggered transfers still run through their own short-lived
@@ -70,14 +68,11 @@ class BridgeConnectionService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        startForeground(notificationText(_state.valueCompat))
+        instance = this
+        startForeground(NotificationIds.BRIDGE_CONNECTION, MacLinkNotification.build(this))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (!Settings.BRIDGE_AUTO_CONNECT.valueCompat) {
-            stopSelf()
-            return START_NOT_STICKY
-        }
         if (loop?.isActive != true) {
             updateState { it.copy(phase = Phase.DISCOVERING) }
             loop = scope.launch { runLoop() }
@@ -95,6 +90,7 @@ class BridgeConnectionService : Service() {
         handler.removeCallbacks(settleDiscovery)
         ScreenshotSync.stop(application)
         _state.postValue(State())
+        instance = null
         super.onDestroy()
     }
 
@@ -168,6 +164,19 @@ class BridgeConnectionService : Service() {
                 lastRefresh = now()
                 me.zhanghai.android.files.folderbridge.PairedShares.ensureStarted(this@BridgeConnectionService)
                 lastFilesRefresh = lastRefresh
+                // Mac 配对更换后，旧共享证书在 Mac 侧已失去绑定：重启已在运行的共享
+                // 服务，让它按新配对重新签发并广播。刚启动或已停止的服务不归这里管：
+                // 前者的启动流程自己会重签，后者尊重用户关掉共享的选择。
+                val folderState = me.zhanghai.android.files.folderbridge.FolderBridgeService
+                    .statusLiveData.value?.state
+                if (me.zhanghai.android.files.folderbridge.FolderBridgeKeys.isEnrollmentStale(application) &&
+                    folderState == me.zhanghai.android.files.folderbridge.FolderBridgeService.State.RUNNING
+                ) {
+                    me.zhanghai.android.files.folderbridge.FolderBridgeService.stop(application)
+                    handler.postDelayed({
+                        me.zhanghai.android.files.folderbridge.FolderBridgeService.start(application)
+                    }, 1_000)
+                }
                 updateState { it.copy(connected = true, phase = Phase.CONNECTED, macName = result.first, files = result.second) }
                 refreshNotification()
                 // 连接就绪后才开始观察新截屏；内部会先看截屏推送开关。
@@ -296,47 +305,7 @@ class BridgeConnectionService : Service() {
     }
 
     private fun refreshNotification() {
-        val text = notificationText(_state.valueCompat)
-        getSystemService(NotificationManager::class.java)?.notify(NotificationIds.BRIDGE_CONNECTION, build(text))
-    }
-
-    private fun notificationText(state: State): String = when {
-        state.connected -> getString(R.string.fw_bridge_connection_connected, state.macName.orEmpty())
-        state.phase == Phase.PAIRING -> getString(R.string.fw_bridge_connection_pairing)
-        state.phase == Phase.RETRYING -> getString(R.string.fw_bridge_connection_retrying)
-        else -> getString(R.string.fw_bridge_connection_finding)
-    }
-
-    private fun startForeground(text: String) {
-        startForeground(NotificationIds.BRIDGE_CONNECTION, build(text))
-    }
-
-    private fun build(text: String): Notification {
-        val contentIntent = BridgeActivity::class.createIntent()
-        val contentPendingIntent = PendingIntent.getActivity(
-            this, BridgeActivity::class.hashCode(), contentIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val disableIntent = BridgeConnectionReceiver.createIntent()
-        val disablePendingIntent = PendingIntent.getBroadcast(
-            this, BridgeConnectionReceiver::class.hashCode(), disableIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val clipboardPendingIntent = PendingIntent.getActivity(
-            this, SendClipboardActivity::class.hashCode(), Intent(this, SendClipboardActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        return bridgeConnectionNotificationTemplate.createBuilder(this)
-            .setContentText(if (_state.valueCompat.connected) getString(R.string.fw_clipboard_notification_hint) else text)
-            .setContentTitle(if (_state.valueCompat.connected) getString(R.string.fw_send_clipboard_quick) else getString(R.string.fw_bridge_connection_title))
-            .setContentIntent(if (_state.valueCompat.connected) clipboardPendingIntent else contentPendingIntent)
-            .addAction(R.drawable.clipboard_icon_white_24dp,
-                getString(R.string.fw_send_clipboard_quick), clipboardPendingIntent)
-            .addAction(
-                R.drawable.stop_icon_white_24dp, getString(R.string.fw_bridge_connection_disable),
-                disablePendingIntent
-            )
-            .build()
+        MacLinkNotification.notify(this)
     }
 
     enum class Phase { DISCOVERING, PAIRING, CONNECTED, RETRYING }
@@ -353,6 +322,9 @@ class BridgeConnectionService : Service() {
     companion object {
         const val REFRESH_INTERVAL_MILLIS = 5_000L
 
+        @Volatile
+        private var instance: BridgeConnectionService? = null
+
         private val _state = MutableLiveData(State())
         val stateLiveData: LiveData<State>
             get() = _state
@@ -366,30 +338,15 @@ class BridgeConnectionService : Service() {
         fun stop(context: Context) {
             context.stopService(Intent(context, BridgeConnectionService::class.java))
         }
-    }
-}
 
-class BridgeConnectionReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) {
-        when (intent.action) {
-            ACTION_DISABLE -> {
-                // Opting out from the notification is the same explicit choice as the
-                // settings switch: both clear it, so the connection stays off until
-                // the user re-enables it.
-                Settings.BRIDGE_AUTO_CONNECT.putValue(false)
-                BridgeConnectionService.stop(context)
-                context.showToast(R.string.fw_bridge_connection_disabled)
-            }
-            else -> throw IllegalArgumentException(intent.action)
+        /**
+         * 文件夹共享服务退出前台后，把合并通知重新挂回常驻连接服务的前台状态，
+         * 保证通知栏里这条永远存在（见 MacLinkNotification）。
+         */
+        fun repostIfRunning() {
+            val service = instance ?: return
+            service.startForeground(NotificationIds.BRIDGE_CONNECTION, MacLinkNotification.build(service))
         }
-    }
-
-    companion object {
-        const val ACTION_DISABLE = "disable"
-
-        fun createIntent(): Intent =
-            Intent(application, BridgeConnectionReceiver::class.java)
-                .setAction(ACTION_DISABLE)
     }
 }
 
@@ -410,3 +367,88 @@ internal val bridgeConnectionNotificationTemplate =
         category = NotificationCompat.CATEGORY_SERVICE,
         priority = NotificationCompat.PRIORITY_LOW
     )
+
+/**
+ * 合并的常驻通知：Mac 连接与文件夹共享两个前台服务共用同一条（同一通知 id）。
+ * 两个服务都在状态变化时重发完整内容（连接行 + 共享行 + 全部按钮），后写的
+ * 内容也是完整的，谁写都一样；一个服务退出前台时由另一个补发（repostIfRunning），
+ * 用户在通知栏始终只看到这一条。
+ */
+object MacLinkNotification {
+    fun notify(context: Context) {
+        context.getSystemService(NotificationManager::class.java)?.notify(
+            NotificationIds.BRIDGE_CONNECTION, build(context)
+        )
+    }
+
+    fun build(context: Context): Notification {
+        val bridge = BridgeConnectionService.stateLiveData.valueCompat
+        val folder = FolderBridgeService.statusLiveData.valueCompat
+        val lines = mutableListOf(
+            context.getString(
+                when {
+                    bridge.connected -> R.string.fw_bridge_connection_connected
+                    bridge.phase == BridgeConnectionService.Phase.PAIRING ->
+                        R.string.fw_bridge_connection_pairing
+                    bridge.phase == BridgeConnectionService.Phase.RETRYING ->
+                        R.string.fw_bridge_connection_retrying
+                    else -> R.string.fw_bridge_connection_finding
+                },
+                bridge.macName.orEmpty()
+            )
+        )
+        when (folder.state) {
+            FolderBridgeService.State.RUNNING -> lines.add(
+                context.getString(
+                    R.string.fw_folder_bridge_notification_running,
+                    folder.port ?: FolderBridgeServer.DEFAULT_PORT
+                ) + (if (folder.fileCount >= 0) context.getString(
+                    R.string.fw_folder_bridge_notification_files, folder.fileCount
+                ) else "") + (if (folder.nsdFailed) context.getString(
+                    R.string.fw_folder_bridge_notification_nsd_failed
+                ) else "")
+            )
+            FolderBridgeService.State.STARTING -> lines.add(
+                context.getString(R.string.fw_folder_bridge_state_summary_starting)
+            )
+            else -> {}
+        }
+        val text = lines.joinToString("\n")
+        val builder = bridgeConnectionNotificationTemplate.createBuilder(context)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setContentIntent(contentPendingIntent(context, bridge.connected))
+            .addAction(
+                R.drawable.clipboard_icon_white_24dp,
+                context.getString(R.string.fw_send_clipboard_quick),
+                clipboardPendingIntent(context)
+            )
+        if (folder.state == FolderBridgeService.State.RUNNING ||
+            folder.state == FolderBridgeService.State.STARTING) {
+            builder.addAction(
+                R.drawable.stop_icon_white_24dp, context.getString(R.string.stop),
+                stopSharePendingIntent(context)
+            )
+        }
+        return builder.build()
+    }
+
+    /** 连接就绪时点通知直接进发送剪贴板（沿用合并前的行为），否则进共享文件页。 */
+    private fun contentPendingIntent(context: Context, connected: Boolean): PendingIntent =
+        if (connected) clipboardPendingIntent(context) else PendingIntent.getActivity(
+            context, BridgeActivity::class.hashCode(), BridgeActivity::class.createIntent(),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+    private fun clipboardPendingIntent(context: Context): PendingIntent = PendingIntent.getActivity(
+        context, SendClipboardActivity::class.hashCode(),
+        Intent(context, SendClipboardActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+
+    private fun stopSharePendingIntent(context: Context): PendingIntent = PendingIntent.getBroadcast(
+        context, FolderBridgeReceiver::class.hashCode(), FolderBridgeReceiver.createIntent(),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+}

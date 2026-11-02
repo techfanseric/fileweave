@@ -109,7 +109,7 @@ struct Library: Codable {
               fm.fileExists(atPath: legacy.path) else { return }
         do {
             try fm.createDirectory(at: directory, withIntermediateDirectories: true)
-            NSLog("迁移旧数据目录：%@ → %@", legacy.path, directory.path)
+            NSLog(L("迁移旧数据目录：%@ → %@"), legacy.path, directory.path)
             var pending = false
             for name in ["library.json", "transcripts", "asr", "bailian.env"] {
                 let from = legacy.appendingPathComponent(name)
@@ -120,7 +120,7 @@ struct Library: Codable {
                     try fm.moveItem(at: from, to: to)
                 } catch {
                     pending = true
-                    NSLog("迁移 %@ 失败（下次启动重试）：%@",
+                    NSLog(L("迁移 %@ 失败（下次启动重试）：%@"),
                           name, String(describing: error))
                 }
             }
@@ -128,7 +128,7 @@ struct Library: Codable {
                 fm.createFile(atPath: marker.path, contents: nil)
             }
         } catch {
-            NSLog("创建新数据目录失败，跳过迁移：%@", String(describing: error))
+            NSLog(L("创建新数据目录失败，跳过迁移：%@"), String(describing: error))
         }
     }
 
@@ -141,7 +141,7 @@ struct Library: Codable {
         } catch {
             // 以前这里是静默回退空库。结果加一个新字段就让整份库作废，
             // 新增标记/转录记录/已下载状态每次重启全丢，而且完全查不出来。
-            NSLog("library.json 解析失败，已回退为空库：%@", String(describing: error))
+            NSLog(L("library.json 解析失败，已回退为空库：%@"), String(describing: error))
             return Library()
         }
     }
@@ -417,7 +417,7 @@ struct Library: Codable {
 
         if !recovered.isEmpty {
             save()
-            NSLog("已从磁盘补回 %d 份转录索引：%@",
+            NSLog(L("已从磁盘补回 %d 份转录索引：%@"),
                   recovered.count, recovered.joined(separator: ","))
         }
         return recovered

@@ -1,0 +1,17 @@
+<resources>
+    <string name="fw_recent_files">Recent files</string>
+    <string name="fw_recent_empty">No recent files</string>
+    <string name="fw_recent_empty_hint">Allow file access and check the included folders. Pull down to refresh after saving a file; Android may take time to index it.</string>
+    <string name="fw_recent_scope">Recent file folders</string>
+    <string name="fw_recent_scope_hint">Includes subfolders. Uses Android’s shared-storage file index; private app files and unindexed files are not included.</string>
+    <string name="fw_recent_scope_all">All accessible indexed files (default)</string>
+    <string name="fw_recent_scope_exclude">Exclude the folders below</string>
+    <string name="fw_recent_scope_only">Only include the folders below</string>
+    <string name="fw_recent_scope_paths">Absolute folder paths, one per line</string>
+    <string name="fw_recent_scope_add_directory">Add folder…</string>
+    <string name="fw_recent_scope_invalid_path">Enter an absolute path starting with / on each line.</string>
+    <string name="fw_recent_scope_local_only">Choose a folder on this phone.</string>
+    <string name="fw_recent_load_more">Load more</string>
+    <string name="fw_recent_loading_more">Loading…</string>
+    <string name="fw_recent_retry_more">Retry loading more</string>
+</resources>

@@ -1,4 +1,5 @@
 import http.client
+import hashlib
 import json
 from pathlib import Path
 import ssl
@@ -79,6 +80,30 @@ class BridgeTests(unittest.TestCase):
         text = 'FileWeave 中文 🧵'
         self.assertEqual(self.request('POST', '/v1/clipboard', json.dumps({'text': text}).encode())[0], 200)
         self.assertEqual(json.loads(self.request('GET', '/v1/clipboard')[1])['text'], text)
+
+    def test_latest_received_clipboard_is_memory_only_and_not_the_mac_clipboard(self):
+        text = 'phone test clipboard 中文'
+        self.assertEqual(self.request('POST', '/v1/clipboard', json.dumps({'text': text}).encode())[0], 200)
+        first = json.loads(self.request('GET', '/v1/received-clipboard')[1])['clipboard']
+        self.assertEqual(first['text'], text)
+        self.server.clipboard.write('later Mac copy')
+        self.assertEqual(json.loads(self.request('GET', '/v1/received-clipboard')[1])['clipboard'], first)
+        self.request('POST', '/v1/clipboard', json.dumps({'text': 'next phone copy'}).encode())
+        second = json.loads(self.request('GET', '/v1/received-clipboard')[1])['clipboard']
+        self.assertNotEqual(first['id'], second['id'])
+        self.assertEqual(second['text'], 'next phone copy')
+        self.assertEqual(self.request('GET', '/v1/received-clipboard', authorized=False)[0], 401)
+        self.assertFalse(any('clipboard' in path.name for path in self.server.state.rglob('*')))
+
+    def test_authenticated_address_snapshot_contains_no_tokens(self):
+        device = hashlib.sha256(b'test token never persisted').hexdigest()
+        self.server.note_authenticated_peer(device, '192.168.10.9')
+        snapshot = json.loads((self.server.state / 'active-peers.json').read_text())
+        self.assertEqual(snapshot[0]['host'], '192.168.10.9')
+        self.assertNotIn('test token never persisted', json.dumps(snapshot))
+        self.assertEqual((self.server.state / 'active-peers.json').stat().st_mode & 0o777, 0o600)
+        self.server.note_authenticated_peer('ignored', '127.0.0.1')
+        self.assertEqual(snapshot, json.loads((self.server.state / 'active-peers.json').read_text()))
 
     def test_reject_oversize_before_read(self):
         self.assertEqual(self.request('POST', '/v1/file?name=oversize', b'', {'Content-Length': str(9*1024**3)})[0], 400)

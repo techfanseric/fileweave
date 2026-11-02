@@ -1,0 +1,16 @@
+<resources>
+    <string name="fw_menu_close">Close menu</string>
+    <string name="fw_menu_back">Back to %1$s</string>
+    <string name="fw_menu_category">%1$s  ›</string>
+    <string name="fw_menu_no_results">No matching options</string>
+    <string name="fw_folder_tools">Folder tools</string>
+    <string name="fw_share_folder">Share this folder</string>
+    <string name="fw_menu_more">More options</string>
+    <string name="fw_view_display">Display</string>
+    <string name="fw_view_sorting">Sort</string>
+    <string name="fw_view_scope">Sorting preferences</string>
+    <string name="fw_encoding_search">Encoding</string>
+    <string name="fw_filter_files">Filter files…</string>
+    <string name="fw_recent_fixed_sort">Recent files always use newest-added order.</string>
+    <string name="fw_menu_open_category">Open %1$s</string>
+</resources>

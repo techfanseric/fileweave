@@ -1,0 +1,13 @@
+<resources>
+    <string name="fw_filter_all">全部</string>
+    <string name="fw_filter_images">图片</string>
+    <string name="fw_filter_videos">视频</string>
+    <string name="fw_filter_audio">音频</string>
+    <string name="fw_filter_format">格式…</string>
+    <string name="fw_filter_more">更多条件…</string>
+    <string name="fw_filter_clear">清除筛选</string>
+    <string name="fw_filter_recursive">含子目录</string>
+    <string name="fw_filter_current_folder">当前目录</string>
+    <string name="fw_filter_created_dates">创建：%1$s</string>
+    <string name="fw_filter_modified_dates">修改：%1$s</string>
+</resources>

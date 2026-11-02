@@ -7,7 +7,7 @@
             android:labelFor="@id/typeSpinner" android:text="@string/fw_search_type" />
         <Spinner android:id="@+id/typeSpinner" android:layout_width="match_parent"
             android:layout_height="48dp" android:entries="@array/fw_search_types" />
-        <EditText android:id="@+id/extensionEdit" android:layout_width="match_parent"
+        <AutoCompleteTextView android:id="@+id/extensionEdit" android:layout_width="match_parent"
             android:layout_height="wrap_content" android:minHeight="48dp"
             android:inputType="textNoSuggestions" android:singleLine="true"
             android:hint="@string/fw_search_extension" />

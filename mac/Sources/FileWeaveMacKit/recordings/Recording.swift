@@ -10,10 +10,10 @@ public enum RecordingKind: String, Codable, CaseIterable {
 
     public var label: String {
         switch self {
-        case .call: return "通话"
-        case .wechat: return "微信"
-        case .recorder: return "录音机"
-        case .other: return "其他"
+        case .call: return L("通话")
+        case .wechat: return L("微信")
+        case .recorder: return L("录音机")
+        case .other: return L("其他")
         }
     }
 
@@ -88,7 +88,7 @@ public struct Recording: Identifiable, Equatable, Hashable {
 
     /// 尺寸文案：B / KB / MB
     var sizeText: String {
-        ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+        FileWeaveFormat.bytes(size)
     }
 
     /// 列表主标题：优先用文件名里解析出的开始时间，否则用修改时间
@@ -127,7 +127,7 @@ public struct Recording: Identifiable, Equatable, Hashable {
     static func parse(stem: String) -> (RecordingKind, String, Date?) {
         if stem.hasPrefix("录音机-") {
             let rest = String(stem.dropFirst("录音机-".count))
-            return (.recorder, "录音机应用录音", dashStampFormatter.date(from: rest))
+            return (.recorder, L("录音机应用录音"), dashStampFormatter.date(from: rest))
         }
 
         for (prefix, kind) in [("微信-", RecordingKind.wechat), ("通话-", RecordingKind.call)] {
@@ -200,9 +200,9 @@ enum Fmt {
 
     static func relative(_ date: Date, now: Date = Date()) -> String {
         let secs = Int(now.timeIntervalSince(date))
-        if secs < 60 { return "刚刚" }
-        if secs < 3600 { return "\(secs / 60) 分钟前" }
-        if secs < 86400 { return "\(secs / 3600) 小时前" }
-        return "\(secs / 86400) 天前"
+        if secs < 60 { return L("刚刚") }
+        if secs < 3600 { return L("{0} 分钟前", secs / 60) }
+        if secs < 86400 { return L("{0} 小时前", secs / 3600) }
+        return L("{0} 天前", secs / 86400)
     }
 }

@@ -52,9 +52,12 @@ open class ShareToMacActivity : FeatureActivity() {
             window.setDimAmount(0f)
             window.setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
         } else {
-            screen(getString(R.string.fw_share_to_mac))
-            text(getString(R.string.fw_share_sending))
-            button(getString(android.R.string.cancel)) { finish() }
+            composeScreen {
+                me.zhanghai.android.files.design.FeaturePage(getString(R.string.fw_share_to_mac), { finish() }, busy = true) {
+                    item { me.zhanghai.android.files.design.StatusLine(getString(R.string.fw_share_sending)) }
+                    item { me.zhanghai.android.files.design.PrimaryAction(getString(android.R.string.cancel)) { finish() } }
+                }
+            }
         }
         transfer.result.observe(this) { result ->
             Toast.makeText(this, result, Toast.LENGTH_LONG).show()

@@ -97,8 +97,6 @@
     <string name="pref_key_read_remote_files_for_thumbnail">key_read_remote_files_for_thumbnail</string>
     <bool name="pref_default_value_read_remote_files_for_thumbnail">true</bool>
 
-    <string name="pref_key_bridge_auto_connect">key_bridge_auto_connect</string>
-    <bool name="pref_default_value_bridge_auto_connect">true</bool>
     <string name="pref_key_bridge_screenshot_sync">key_bridge_screenshot_sync</string>
     <bool name="pref_default_value_bridge_screenshot_sync">true</bool>
     <string name="pref_key_file_list_show_details">key_file_list_show_details</string>

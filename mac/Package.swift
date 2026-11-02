@@ -18,6 +18,12 @@ let package = Package(
             path: "Sources/FileWeaveMenuBar",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
+        .executableTarget(
+            name: "FileWeaveCLI",
+            dependencies: ["FileWeaveMacKit"],
+            path: "Sources/FileWeaveCLI",
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
         // 调试版：把同一套界面渲染成普通窗口，便于截图核对
         .executableTarget(
             name: "FileWeaveMacDebug",

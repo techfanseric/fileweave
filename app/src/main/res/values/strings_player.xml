@@ -1,0 +1,21 @@
+<resources>
+    <string name="fw_video_lock_controls">Lock playback controls</string>
+    <string name="fw_video_unlock_controls">Unlock playback controls</string>
+    <string name="fw_audio_seek">Playback position</string>
+    <string name="fw_audio_loading">Loading…</string>
+    <string name="fw_audio_ready">Audio · %1$d / %2$d</string>
+    <string name="fw_audio_speed_value">Speed: %1$s</string>
+    <string name="fw_audio_position">%1$s of %2$s</string>
+    <string name="fw_audio_retry">Retry playback</string>
+    <string name="fw_repeat_title">Playback mode</string>
+    <string name="fw_repeat_off">In order</string>
+    <string name="fw_repeat_all">Repeat queue</string>
+    <string name="fw_repeat_one">Repeat current</string>
+    <string name="fw_repeat_shuffle">Shuffle</string>
+    <string name="fw_queue_up">Move up</string>
+    <string name="fw_queue_down">Move down</string>
+    <string name="fw_queue_remove">Remove from queue</string>
+    <string name="fw_queue_clear">Clear queue</string>
+    <string name="fw_queue_clear_confirm">Clear the queue and stop playback?</string>
+    <string name="fw_video_repeat">Loop video</string>
+</resources>

@@ -5,6 +5,8 @@
 
 package me.zhanghai.android.files.viewer.text
 
+import me.zhanghai.android.files.ui.ActionPanel
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -53,10 +55,14 @@ class TextEditorFragment : Fragment(), ConfirmReloadDialogFragment.Listener,
     private lateinit var onBackPressedCallback: OnBackPressedCallback
 
     private var isSettingText = false
+    private var previewMode = false
+    private var editKeyListener: android.text.method.KeyListener? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        previewMode = savedInstanceState?.getBoolean("preview_mode")
+            ?: args.intent.getBooleanExtra(TextEditorActivity.EXTRA_PREVIEW, false)
         setHasOptionsMenu(true)
 
         lifecycleScope.launchWhenStarted {
@@ -125,12 +131,16 @@ class TextEditorFragment : Fragment(), ConfirmReloadDialogFragment.Listener,
             viewModel.isTextChanged.value = true
         }
 
+        editKeyListener = binding.textEdit.keyListener
+        applyPreviewMode()
+
         // TODO: Request storage permission if not granted.
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
 
+        outState.putBoolean("preview_mode", previewMode)
         viewModel.setEditTextSavedState(binding.textEdit.onSaveInstanceState())
     }
 
@@ -144,11 +154,18 @@ class TextEditorFragment : Fragment(), ConfirmReloadDialogFragment.Listener,
         super.onPrepareOptionsMenu(menu)
 
         updateSaveMenuItem()
+        menu.findItem(R.id.action_edit_text).isVisible = previewMode
         updateEncodingMenuItems()
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean =
         when (item.itemId) {
+            R.id.action_edit_text -> {
+                previewMode = false
+                applyPreviewMode()
+                requireActivity().invalidateOptionsMenu()
+                true
+            }
             R.id.action_save -> {
                 save()
                 true
@@ -157,12 +174,40 @@ class TextEditorFragment : Fragment(), ConfirmReloadDialogFragment.Listener,
                 onReload()
                 true
             }
-            Menu.FIRST -> {
-                viewModel.encoding.value = Charset.forName(item.titleCondensed!!.toString())
+            R.id.action_text_more -> {
+                ActionPanel(requireContext(), viewLifecycleOwner, viewModel.file.value.fileName.toString(),
+                    menuBinding.menu.findItem(R.id.action_text_model).subMenu!!,
+                    keepOpen = { true },
+                    searchable = { it === menuBinding.encodingSubMenu }) { selected ->
+                    if (menuBinding.encodingSubMenu.children.any { it === selected }) selectEncoding(Charset.forName(selected.titleCondensed.toString()))
+                    else onOptionsItemSelected(selected)
+                }.show()
                 true
             }
             else -> super.onOptionsItemSelected(item)
         }
+
+    private fun selectEncoding(charset: Charset) {
+        if (charset == viewModel.encoding.value) return
+        fun apply() {
+            ActionPanel.dismiss(requireContext())
+            viewModel.isTextChanged.value = false
+            viewModel.encoding.value = charset
+        }
+        if (!viewModel.isTextChanged.value) { apply(); return }
+        MaterialAlertDialogBuilder(requireContext()).setMessage(R.string.text_editor_reload_message)
+            .setPositiveButton(R.string.keep_editing, null)
+            .setNegativeButton(R.string.reload) { _, _ -> apply() }.show()
+    }
+
+    private fun applyPreviewMode() {
+        binding.textEdit.keyListener = if (previewMode) null else editKeyListener
+        binding.textEdit.setTextIsSelectable(previewMode)
+        if (!previewMode) binding.textEdit.keyListener = editKeyListener
+        binding.textEdit.isCursorVisible = !previewMode
+        if (previewMode) binding.textEdit.clearFocus()
+        updateTitle()
+    }
 
     fun onSupportNavigateUp(): Boolean {
         if (onBackPressedCallback.isEnabled) {
@@ -187,7 +232,7 @@ class TextEditorFragment : Fragment(), ConfirmReloadDialogFragment.Listener,
         val charsetName = viewModel.encoding.value.name()
         val charsetItem = menuBinding.encodingSubMenu.children
             .find { it.titleCondensed == charsetName }!!
-        charsetItem.isChecked = true
+        menuBinding.encodingSubMenu.children.forEach { it.isChecked = it === charsetItem }
     }
 
     private fun onTextStateChanged(state: DataState<String>) {
@@ -235,6 +280,10 @@ class TextEditorFragment : Fragment(), ConfirmReloadDialogFragment.Listener,
     private fun updateTitle() {
         val fileName = viewModel.file.value.fileName.toString()
         val changed = viewModel.isTextChanged.value
+        if (previewMode) {
+            requireActivity().title = fileName
+            return
+        }
         requireActivity().title = getString(
             if (changed) {
                 R.string.text_editor_title_changed_format
@@ -253,6 +302,7 @@ class TextEditorFragment : Fragment(), ConfirmReloadDialogFragment.Listener,
     }
 
     override fun reload() {
+        ActionPanel.dismiss(requireContext())
         viewModel.isTextChanged.value = false
         viewModel.reload()
     }
@@ -279,6 +329,7 @@ class TextEditorFragment : Fragment(), ConfirmReloadDialogFragment.Listener,
         if (!this::menuBinding.isInitialized) {
             return
         }
+        menuBinding.saveItem.isVisible = !previewMode
         menuBinding.saveItem.isEnabled = viewModel.writeFileState.value.isReady
     }
 
@@ -294,12 +345,16 @@ class TextEditorFragment : Fragment(), ConfirmReloadDialogFragment.Listener,
             fun inflate(menu: Menu, inflater: MenuInflater): MenuBinding {
                 inflater.inflate(R.menu.text_editor, menu)
                 val encodingSubMenu = menu.findItem(R.id.action_encoding).subMenu!!
-                for ((charsetName, charset) in Charset.availableCharsets()) {
+                val all = Charset.availableCharsets()
+                val preferred = listOf("UTF-8", "UTF-16", "GB18030", "GBK", "Big5", "Shift_JIS", "ISO-8859-1", "windows-1252")
+                val ordered = (preferred.mapNotNull { all[it] } + all.values).distinctBy { it.name() }
+                for ((index, charset) in ordered.withIndex()) {
+                    val charsetName = charset.name()
                     // HACK: Use titleCondensed to store charset name.
-                    encodingSubMenu.add(Menu.NONE, Menu.FIRST, Menu.NONE, charset.displayName())
+                    encodingSubMenu.add(if (index < preferred.size) 1 else 2, Menu.FIRST + index, Menu.NONE, charset.displayName())
                         .titleCondensed = charsetName
                 }
-                encodingSubMenu.setGroupCheckable(Menu.NONE, true, true)
+                encodingSubMenu.children.forEach { it.isCheckable = true }
                 return MenuBinding(menu, menu.findItem(R.id.action_save), encodingSubMenu)
             }
         }

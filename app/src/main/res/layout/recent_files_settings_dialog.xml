@@ -1,0 +1,25 @@
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="wrap_content" android:fillViewport="true">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:paddingStart="24dp" android:paddingEnd="24dp" android:paddingTop="8dp">
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="@string/fw_recent_scope_hint" android:textAppearance="?textAppearanceListItemSecondary" />
+        <RadioGroup android:id="@+id/modes" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <RadioButton android:id="@+id/modeAll" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:minHeight="48dp" android:text="@string/fw_recent_scope_all" />
+            <RadioButton android:id="@+id/modeExclude" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:minHeight="48dp" android:text="@string/fw_recent_scope_exclude" />
+            <RadioButton android:id="@+id/modeOnly" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:minHeight="48dp" android:text="@string/fw_recent_scope_only" />
+        </RadioGroup>
+        <com.google.android.material.textfield.TextInputLayout android:id="@+id/rootsInput"
+            android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="@string/fw_recent_scope_paths">
+            <com.google.android.material.textfield.TextInputEditText android:id="@+id/roots"
+                android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="top"
+                android:inputType="textMultiLine|textNoSuggestions" android:minLines="3" android:maxLines="6" />
+        </com.google.android.material.textfield.TextInputLayout>
+        <com.google.android.material.button.MaterialButton android:id="@+id/addDirectory"
+            style="?attr/borderlessButtonStyle" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:minHeight="48dp" android:text="@string/fw_recent_scope_add_directory" />
+    </LinearLayout>
+</ScrollView>

@@ -10,4 +10,8 @@
     <string name="fw_bridge_history_clipboard_received">收到剪贴板 %1$s · %2$s</string>
     <string name="fw_bridge_history_shared_title">Mac 共享的文件</string>
     <string name="fw_clipboard_copy_mac">复制 Mac 剪贴板到本机</string>
+    <string name="fw_bridge_history_entry_delete">删除这条历史记录</string>
+    <string name="fw_bridge_history_entry_deleted">历史记录已删除</string>
+    <string name="fw_bridge_history_delete_failed">删除历史记录失败，记录仍保留，请重试。</string>
+    <string name="fw_bridge_history_delete_scope">历史保存在本机。删除记录不会删除文件或清空系统剪贴板。</string>
 </resources>

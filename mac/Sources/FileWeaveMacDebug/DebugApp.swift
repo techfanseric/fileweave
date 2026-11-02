@@ -11,15 +11,36 @@ import FileWeaveMacKit
 struct DebugWindowApp: App {
     @StateObject private var app = AppState()
     @StateObject private var bridge = BridgeProcess()
+    @StateObject private var workspace: WorkspaceSession
+
+    init() {
+        let session = WorkspaceSession()
+        #if DEBUG
+        session.setPreviewDestination(ProcessInfo.processInfo.environment["SNAPSHOT_DESTINATION"] ?? ProcessInfo.processInfo.environment["SNAPSHOT_PAGE"] ?? "files")
+        #endif
+        _workspace = StateObject(wrappedValue: session)
+        AppLanguage.configureNativeLanguage()
+        if ProcessInfo.processInfo.environment["SNAPSHOT_DARK"] == "1" { NSApplication.shared.appearance = NSAppearance(named: .darkAqua) }
+    }
 
     var body: some Scene {
-        Window("FileWeave · 调试窗口", id: "debug") {
-            FileWeavePanelView(bridge: bridge, showsRecordings: ProcessInfo.processInfo.environment["SNAPSHOT_PAGE"] == "recordings")
+        Window(L("FileWeave · 调试窗口"), id: "debug") {
+            Group {
+                if ProcessInfo.processInfo.environment["SNAPSHOT_PAGE"] == "quick" {
+                    FileWeavePopoverView(bridge: bridge, workspace: workspace,
+                        panelSize: CGSize(width: Double(ProcessInfo.processInfo.environment["SNAPSHOT_WIDTH"] ?? "720") ?? 720,
+                                          height: Double(ProcessInfo.processInfo.environment["SNAPSHOT_HEIGHT"] ?? "640") ?? 640), openWindow: {})
+                } else {
+            FileWeavePanelView(bridge: bridge, workspace: workspace)
+                }
+            }
                 .environmentObject(app)
-                .task { await bringToFrontAndMaybeSnapshot(app) }
+                .preferredColorScheme(ProcessInfo.processInfo.environment["SNAPSHOT_DARK"] == "1" ? .dark : nil)
+                .task { app.isPanelVisible = true; await bringToFrontAndMaybeSnapshot(app) }
         }
-        .defaultSize(width: Metrics.panelWidth, height: Metrics.panelHeight)
-        .windowResizability(.contentSize)
+        .defaultSize(width: ProcessInfo.processInfo.environment["SNAPSHOT_PAGE"] == "quick" ? Metrics.panelWidth : 1040,
+                      height: ProcessInfo.processInfo.environment["SNAPSHOT_PAGE"] == "quick" ? Metrics.panelHeight : 700)
+        .windowResizability(.automatic)
     }
 
     @MainActor
@@ -28,6 +49,11 @@ struct DebugWindowApp: App {
         try? await Task.sleep(nanoseconds: 1_200_000_000)
         NSApp.activate(ignoringOtherApps: true)
         for w in NSApp.windows where w.isVisible {
+            if let width = Double(ProcessInfo.processInfo.environment["SNAPSHOT_WIDTH"] ?? ""),
+               let height = Double(ProcessInfo.processInfo.environment["SNAPSHOT_HEIGHT"] ?? "") {
+                w.setContentSize(NSSize(width: width, height: height))
+            }
+            if ProcessInfo.processInfo.environment["SNAPSHOT_DARK"] == "1" { w.appearance = NSAppearance(named: .darkAqua) }
             w.level = .floating
             w.center()
             w.makeKeyAndOrderFront(nil)
@@ -55,11 +81,50 @@ struct DebugWindowApp: App {
             try? await Task.sleep(nanoseconds: 500_000_000)
         }
 
+        if DebugPreview.mode != nil,
+           let row = Int(ProcessInfo.processInfo.environment["SNAPSHOT_COMPARE_ROW"] ?? ""),
+           let window = NSApp.windows.first(where: { $0.isVisible && $0.contentView != nil }),
+           let content = window.contentView,
+           let table = nativeTable(in: content), row >= 0, row < table.numberOfRows {
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            let previousPointer = CGEvent(source: nil)?.location
+            defer {
+                if let previousPointer {
+                    CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: previousPointer, mouseButton: .left)?.post(tap: .cghidEventTap)
+                }
+            }
+            let rect = table.rect(ofRow: row)
+            let inWindow = table.convert(NSPoint(x: rect.midX, y: rect.midY), to: nil)
+            let screen = window.convertPoint(toScreen: inWindow)
+            let point = CGPoint(x: screen.x, y: (NSScreen.screens.first?.frame.maxY ?? 0) - screen.y)
+            let titlebar = CGPoint(x: window.frame.midX, y: (NSScreen.screens.first?.frame.maxY ?? 0) - window.frame.maxY + 14)
+            CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: titlebar, mouseButton: .left)?.post(tap: .cghidEventTap)
+            CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp, mouseCursorPosition: titlebar, mouseButton: .left)?.post(tap: .cghidEventTap)
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left)?.post(tap: .cghidEventTap)
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            NSLog("ROW_COMPARE_HOVER row=%d selection=%@ key=%@ active=%@", row, table.selectedRowIndexes.description, window.isKeyWindow.description, NSApp.isActive.description)
+            Snapshotter.capture(content.superview ?? content, to: path.replacingOccurrences(of: ".png", with: "-hover.png"))
+            CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left)?.post(tap: .cghidEventTap)
+            CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left)?.post(tap: .cghidEventTap)
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            Snapshotter.capture(content.superview ?? content, to: path.replacingOccurrences(of: ".png", with: "-selected.png"))
+            NSLog("ROW_COMPARE row=%d nativeRect=%@ selection=%@ key=%@ active=%@", row, NSStringFromRect(rect), table.selectedRowIndexes.description, window.isKeyWindow.description, NSApp.isActive.description)
+        }
+
         if let view = NSApp.windows.first(where: { $0.isVisible && $0.contentView != nil })?.contentView {
-            Snapshotter.capture(view, to: path)
+            Snapshotter.capture(view.superview ?? view, to: path)
         }
         try? await Task.sleep(nanoseconds: 300_000_000)
         NSApplication.shared.terminate(nil)
+    }
+
+    private func nativeTable(in view: NSView) -> NSTableView? {
+        if let table = view as? NSTableView { return table }
+        for child in view.subviews { if let table = nativeTable(in: child) { return table } }
+        return nil
     }
 }
 

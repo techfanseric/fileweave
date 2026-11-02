@@ -1,0 +1,10 @@
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:padding="16dp" android:minHeight="80dp">
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/loadMoreRecentFiles"
+        style="?attr/borderlessButtonStyle"
+        android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_gravity="center" android:minHeight="48dp"
+        android:text="@string/fw_recent_load_more" />
+</FrameLayout>

@@ -8,6 +8,13 @@
 <notices>
 
     <notice>
+        <name>ZXing</name>
+        <url>https://github.com/zxing/zxing</url>
+        <copyright>ZXing authors</copyright>
+        <license>Apache Software License 2.0</license>
+    </notice>
+
+    <notice>
         <name>Material Files</name>
         <url>https://github.com/zhanghai/MaterialFiles</url>
         <copyright>Copyright 2018 Hai Zhang</copyright>

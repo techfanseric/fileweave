@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/audio_bar" android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:orientation="vertical" android:background="?colorSurface" android:paddingHorizontal="16dp"
+    android:paddingTop="8dp" android:paddingBottom="8dp">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:gravity="center_vertical">
+        <ImageView android:layout_width="24dp" android:layout_height="24dp" android:layout_marginEnd="12dp"
+            android:src="@drawable/audio_icon_white_24dp" app:tint="?colorPrimary" android:importantForAccessibility="no" />
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+            <TextView android:id="@+id/audio_title" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:textAppearance="?textAppearanceSubtitle2" android:maxLines="1" android:ellipsize="end" />
+            <TextView android:id="@+id/audio_status" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:textAppearance="?textAppearanceCaption" android:textColor="?android:textColorSecondary"
+                android:maxLines="1" android:ellipsize="end" android:layout_marginTop="2dp" />
+        </LinearLayout>
+        <androidx.appcompat.widget.AppCompatImageButton android:id="@+id/audio_repeat" style="@style/Widget.FileWeave.Player.Icon"
+            android:src="@drawable/player_repeat" android:contentDescription="@string/fw_repeat_title" />
+        <androidx.appcompat.widget.AppCompatImageButton android:id="@+id/audio_close" style="@style/Widget.FileWeave.Player.Icon"
+            android:src="@drawable/close_icon_white_24dp" android:contentDescription="@string/fw_audio_close" />
+    </LinearLayout>
+    <androidx.media3.ui.DefaultTimeBar android:id="@+id/audio_progress" android:layout_width="match_parent" android:layout_height="48dp"
+        android:layoutDirection="ltr" android:contentDescription="@string/fw_audio_seek"
+        app:bar_height="3dp" app:scrubber_enabled_size="10dp" app:scrubber_dragged_size="16dp"
+        app:played_color="?colorPrimary" app:scrubber_color="?colorPrimary" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layoutDirection="ltr">
+        <TextView android:id="@+id/audio_position" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:textAppearance="?textAppearanceCaption" android:textColor="?android:textColorSecondary" />
+        <TextView android:id="@+id/audio_duration" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:textAppearance="?textAppearanceCaption" android:textColor="?android:textColorSecondary" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="56dp" android:layout_marginTop="4dp"
+        android:orientation="horizontal" android:gravity="center_vertical" android:layoutDirection="ltr">
+        <com.google.android.material.button.MaterialButton android:id="@+id/audio_speed" style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="56dp" android:layout_height="48dp" android:minWidth="0dp" android:padding="0dp"
+            android:textSize="12sp" android:contentDescription="@string/fw_audio_speed" />
+        <Space android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1" />
+        <androidx.appcompat.widget.AppCompatImageButton android:id="@+id/audio_previous" style="@style/Widget.FileWeave.Player.Icon"
+            android:src="@drawable/player_previous" android:contentDescription="@string/fw_audio_previous" />
+        <com.google.android.material.button.MaterialButton android:id="@+id/audio_toggle" android:layout_width="56dp" android:layout_height="56dp"
+            android:layout_marginHorizontal="8dp" android:padding="0dp" android:minWidth="0dp" android:insetTop="0dp" android:insetBottom="0dp"
+            android:contentDescription="@string/fw_audio_play" app:cornerRadius="28dp" app:icon="@drawable/player_play"
+            app:iconGravity="textStart" app:iconPadding="0dp" app:iconSize="28dp" />
+        <androidx.appcompat.widget.AppCompatImageButton android:id="@+id/audio_next" style="@style/Widget.FileWeave.Player.Icon"
+            android:src="@drawable/player_next" android:contentDescription="@string/fw_audio_next" />
+        <Space android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1" />
+        <androidx.appcompat.widget.AppCompatImageButton android:id="@+id/audio_queue" style="@style/Widget.FileWeave.Player.Icon"
+            android:src="@drawable/player_queue" android:contentDescription="@string/fw_audio_queue" />
+    </LinearLayout>
+</LinearLayout>

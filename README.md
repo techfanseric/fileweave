@@ -46,3 +46,8 @@ Android 构建还需要 Go，Gradle 会调用 `scripts/build-vault.sh` 编译 ve
 ## 来源与许可
 
 基于 Hai Zhang 及 Material Files 贡献者的工作，沿用 GNU GPL v3 或更新版本，见 [LICENSE](LICENSE)。gocryptfs 实现的 MIT 许可与原文件头保留在第三方源码中。FileWeave 是独立分支，不代表上游官方版本；原说明见 [英文](README.upstream.md)／[中文](README.upstream.zh-CN.md)。
+
+
+### Mac CLI for AI / Mac 命令行
+
+The Mac app includes `fileweave`: noninteractive JSON commands for paired devices, phone files, screenshots, recordings, clipboard, inbox, and existing transcripts. Run `fileweave capabilities --pretty` after `mac/install.sh`; see [CLI reference / 命令行使用说明](docs/CLI.md). CLI 复用现有配对及证书校验，下载不覆盖目标，手机回收站操作可恢复，不新增服务端口。

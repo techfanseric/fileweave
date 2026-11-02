@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fw_lan_browser_hint">同一局域网的设备用浏览器打开链接即可浏览目录、下载文件和预览图片。仅开放当前显示的分享范围；HTTP 传输未加密。停止、替换分享或服务结束后，链接失效。</string>
+    <string name="fw_lan_clipboard_title">分享剪贴板文本</string>
+    <string name="fw_lan_clipboard_hint">网页只能读取你在这里主动分享的文本。手机后续复制的内容不会自动分享；复制新文本后，请回到这里再次分享。复制分享地址会改变手机剪贴板，但不会改变已分享的文本。</string>
+    <string name="fw_lan_clipboard_share">分享当前剪贴板文本</string>
+    <string name="fw_lan_clipboard_clear">停止分享剪贴板文本</string>
+    <string name="fw_lan_clipboard_off">尚未分享剪贴板文本</string>
+    <string name="fw_lan_clipboard_empty">剪贴板中没有可分享的文本</string>
+    <string name="fw_lan_clipboard_too_long">剪贴板文本超过 100,000 字符上限</string>
+    <string name="fw_lan_pick_files">选择文件分享</string>
+    <string name="fw_lan_hub_hint">打开即可共享已授权的手机内部存储，也可以改为仅分享指定文件、文件夹或剪贴板。</string>
+    <string name="fw_lan_clipboard_only">仅分享剪贴板文本，不开放手机文件</string>
+    <string name="fw_lan_manual_hint">链接已包含访问码，在本次分享运行期间持续有效。也可输入短地址后填写六位访问码；每分钟最多尝试 5 次。手机换网络或服务结束后，需要重新打开分享页获取地址。</string>
+    <string name="fw_lan_access_code">六位访问码</string>
+    <string name="fw_lan_qr_description">扫描二维码打开完整分享链接</string>
+    <string name="fw_lan_qr_failed">二维码生成失败，请复制链接，或使用短地址和访问码</string>
+    <string name="fw_lan_clipboard_files">分享系统剪贴板中的文件</string>
+    <string name="fw_lan_clipboard_no_files">系统剪贴板中没有文件链接。在 FileWeave 内复制的文件，请使用文件列表中的“分享已复制文件”。</string>
+    <string name="fw_lan_import_hint">来自其他应用的文件会先复制到本次分享缓存，最多 100 个、合计 1 GiB；停止、替换分享或服务结束时清理。在 FileWeave 中选中的文件直接分享原路径。</string>
+    <string name="fw_lan_receive_invalid">无法分享这些内容。请选择其他应用提供的可读取文件；FileWeave 自己的文件请从文件列表选择后分享。</string>
+    <string name="fw_lan_receive_start">分享收到的内容</string>
+    <string name="fw_lan_preparing">正在准备分享…</string>
+    <string name="fw_lan_importing">正在准备收到的 %1$d 个文件</string>
+    <string name="fw_lan_prepare_failed">无法准备选中的文件</string>
+    <string name="fw_lan_import_limit">导入的文件超过 1 GiB，或缓存可用空间不足 32 MiB。请直接在 FileWeave 中选择这些文件分享，避免创建临时副本。</string>
+    <string name="fw_lan_received_file">收到的文件</string>
+</resources>

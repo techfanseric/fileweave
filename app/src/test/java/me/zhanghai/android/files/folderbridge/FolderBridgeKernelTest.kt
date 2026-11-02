@@ -150,6 +150,41 @@ class FolderBridgeKernelTest {
     // ---------------------------------------------------------------- Status & tree
 
     @Test
+    fun statusCapacityIsAuthenticatedAndDoesNotScanFiles() {
+        var reads = 0
+        kernel.storageCapacity = {
+            ++reads
+            FolderBridgeKernel.StorageCapacity(512_000_000_000L, 123_000_000_000L)
+        }
+        assertEquals(401, request("GET", "/v1/status", token = null).status)
+        assertEquals(0, reads)
+        val response = request("GET", "/v1/status")
+        assertTrue(response.bodyText.contains(
+            "\"storage\":{\"volume\":\"primary\",\"totalBytes\":512000000000," +
+                "\"availableBytes\":123000000000}"
+        ))
+        assertTrue(response.bodyText.contains("\"files\":-1"))
+        assertEquals(1, reads)
+    }
+
+    @Test
+    fun missingFailedAndInvalidCapacityDoNotBreakProbe() {
+        val providers: List<() -> FolderBridgeKernel.StorageCapacity?> = listOf(
+            { null },
+            { throw IllegalStateException("unavailable") },
+            { FolderBridgeKernel.StorageCapacity(0, 0) },
+            { FolderBridgeKernel.StorageCapacity(10, -1) },
+            { FolderBridgeKernel.StorageCapacity(10, 11) }
+        )
+        for (provider in providers) {
+            kernel.storageCapacity = provider
+            val response = request("GET", "/v1/status")
+            assertEquals(200, response.status)
+            assertFalse(response.bodyText.contains("\"storage\""))
+        }
+    }
+
+    @Test
     fun statusReportsProtocolModelFilesAndRoot() {
         seedFiles()
         request("GET", "/v1/tree")

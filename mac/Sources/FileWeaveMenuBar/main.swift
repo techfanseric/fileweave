@@ -1,4 +1,7 @@
 import AppKit
+import FileWeaveMacKit
+
+AppLanguage.configureNativeLanguage()
 
 // 纯状态栏应用：没有 Dock 图标、没有窗口，只有菜单栏图标。
 // 不使用 SwiftUI 的 App 协议，因为 MenuBarExtra 无法区分左右键。

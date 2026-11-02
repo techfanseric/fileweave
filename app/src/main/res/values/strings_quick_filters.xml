@@ -1,0 +1,13 @@
+<resources>
+    <string name="fw_filter_all">All</string>
+    <string name="fw_filter_images">Images</string>
+    <string name="fw_filter_videos">Videos</string>
+    <string name="fw_filter_audio">Audio</string>
+    <string name="fw_filter_format">Format…</string>
+    <string name="fw_filter_more">More filters…</string>
+    <string name="fw_filter_clear">Clear filters</string>
+    <string name="fw_filter_recursive">Include subfolders</string>
+    <string name="fw_filter_current_folder">This folder</string>
+    <string name="fw_filter_created_dates">Created: %1$s</string>
+    <string name="fw_filter_modified_dates">Modified: %1$s</string>
+</resources>

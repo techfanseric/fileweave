@@ -47,15 +47,24 @@ class NavigationFragment : Fragment(), NavigationItem.Listener {
         val viewLifecycleOwner = viewLifecycleOwner
         NavigationItemListLiveData.observe(viewLifecycleOwner) { onNavigationItemsChanged(it) }
         listener.observeCurrentPath(viewLifecycleOwner) { onCurrentPathChanged(it) }
+        listener.observeRecentFiles(viewLifecycleOwner) { adapter.notifyCheckedChanged() }
     }
 
     private fun onNavigationItemsChanged(navigationItems: List<NavigationItem?>) {
-        adapter.replace(navigationItems)
+        adapter.replace(navigationItems.filterNot {
+            it is RecentFilesItem && !listener.isRecentFilesAvailable
+        })
     }
 
     private fun onCurrentPathChanged(path: Path) {
         adapter.notifyCheckedChanged()
     }
+
+    override val isRecentFiles: Boolean get() = listener.isRecentFiles
+
+    override fun navigateToRecentFiles() = listener.navigateToRecentFiles()
+
+    override fun configureRecentFiles() = listener.configureRecentFiles()
 
     override val currentPath: Path
         get() = listener.currentPath
@@ -77,6 +86,11 @@ class NavigationFragment : Fragment(), NavigationItem.Listener {
     }
 
     interface Listener {
+        val isRecentFilesAvailable: Boolean
+        val isRecentFiles: Boolean
+        fun navigateToRecentFiles()
+        fun configureRecentFiles()
+        fun observeRecentFiles(owner: LifecycleOwner, observer: (Boolean) -> Unit)
         val currentPath: Path
         fun navigateTo(path: Path)
         fun navigateToRoot(path: Path)

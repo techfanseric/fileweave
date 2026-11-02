@@ -10,4 +10,8 @@
     <string name="fw_bridge_history_clipboard_received">Received clipboard %1$s · %2$s</string>
     <string name="fw_bridge_history_shared_title">Files shared by the Mac</string>
     <string name="fw_clipboard_copy_mac">Copy Mac clipboard to phone</string>
+    <string name="fw_bridge_history_entry_delete">Delete history entry</string>
+    <string name="fw_bridge_history_entry_deleted">History entry deleted</string>
+    <string name="fw_bridge_history_delete_failed">Could not delete history. The entry has been kept; try again.</string>
+    <string name="fw_bridge_history_delete_scope">Stored on this phone. Deleting history keeps files and system clipboards unchanged.</string>
 </resources>

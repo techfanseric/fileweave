@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <group android:id="@+id/quick_format_options" android:checkableBehavior="single">
+        <item android:id="@+id/filter_format_jpg" android:title="JPG" />
+        <item android:id="@+id/filter_format_png" android:title="PNG" />
+        <item android:id="@+id/filter_format_gif" android:title="GIF" />
+        <item android:id="@+id/filter_format_webp" android:title="WebP" />
+        <item android:id="@+id/filter_format_mp4" android:title="MP4" />
+        <item android:id="@+id/filter_format_mkv" android:title="MKV" />
+        <item android:id="@+id/filter_format_mp3" android:title="MP3" />
+        <item android:id="@+id/filter_format_pdf" android:title="PDF" />
+        <item android:id="@+id/filter_format_zip" android:title="ZIP" />
+        <item android:id="@+id/filter_format_markdown" android:title="Markdown" />
+    </group>
+    <item android:id="@+id/filter_more" android:title="@string/fw_filter_more" />
+    <item android:id="@+id/filter_clear" android:title="@string/fw_filter_clear" />
+</menu>

@@ -46,6 +46,16 @@
                 android:layout_marginEnd="@dimen/file_list_toolbar_breadcrumb_margin_end"
                 android:gravity="center_vertical" />
 
+            <TextView
+                android:id="@+id/recentFilesTitle"
+                android:layout_width="match_parent" android:layout_height="?actionBarSize"
+                android:layout_marginStart="@dimen/file_list_toolbar_breadcrumb_margin_start"
+                android:layout_marginEnd="@dimen/file_list_toolbar_breadcrumb_margin_end"
+                android:gravity="center_vertical" android:maxLines="1" android:ellipsize="end"
+                android:text="@string/fw_recent_files"
+                android:textAppearance="@style/TextAppearance.AppCompat.Widget.ActionBar.Title"
+                android:visibility="gone" />
+
             <me.zhanghai.android.files.ui.OverlayToolbar
                 android:id="@+id/overlayToolbar"
                 android:layout_width="match_parent"
@@ -57,5 +67,52 @@
                 app:navigationIcon="@drawable/close_icon_control_normal_24dp"
                 app:popupTheme="?actionBarPopupTheme" />
         </FrameLayout>
+        <HorizontalScrollView
+            android:id="@+id/quickFiltersScroll"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:fillViewport="true" android:scrollbars="none" android:visibility="gone">
+            <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:orientation="horizontal" android:paddingStart="12dp" android:paddingEnd="12dp">
+                <com.google.android.material.chip.Chip android:id="@+id/quickFilterAll"
+                    style="@style/Widget.MaterialComponents.Chip.Filter"
+                    app:checkedIconVisible="false"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:layout_marginEnd="4dp" android:minHeight="48dp" android:text="@string/fw_filter_all" />
+                <com.google.android.material.chip.Chip android:id="@+id/quickFilterSelected"
+                    style="@style/Widget.MaterialComponents.Chip.Filter"
+                    app:checkedIconVisible="false"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:layout_marginEnd="4dp" android:minHeight="48dp" android:visibility="gone" app:closeIconVisible="true" />
+                <com.google.android.material.chip.Chip android:id="@+id/quickFilterImage"
+                    style="@style/Widget.MaterialComponents.Chip.Filter"
+                    app:checkedIconVisible="false"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:layout_marginEnd="4dp" android:minHeight="48dp" android:text="@string/fw_filter_images" />
+                <com.google.android.material.chip.Chip android:id="@+id/quickFilterVideo"
+                    style="@style/Widget.MaterialComponents.Chip.Filter"
+                    app:checkedIconVisible="false"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:layout_marginEnd="4dp" android:minHeight="48dp" android:text="@string/fw_filter_videos" />
+                <com.google.android.material.chip.Chip android:id="@+id/quickFilterAudio"
+                    style="@style/Widget.MaterialComponents.Chip.Filter"
+                    app:checkedIconVisible="false"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:layout_marginEnd="4dp" android:minHeight="48dp" android:text="@string/fw_filter_audio" />
+                <com.google.android.material.chip.Chip android:id="@+id/quickFilterFormat"
+                    style="@style/Widget.MaterialComponents.Chip.Action"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:layout_marginEnd="4dp" android:minHeight="48dp" android:text="@string/fw_filter_format" />
+                <com.google.android.material.chip.Chip android:id="@+id/quickFilterDates"
+                    style="@style/Widget.MaterialComponents.Chip.Filter"
+                    app:checkedIconVisible="false"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:layout_marginEnd="4dp" android:minHeight="48dp" android:visibility="gone" app:closeIconVisible="true" />
+                <com.google.android.material.chip.Chip android:id="@+id/quickFilterScope"
+                    style="@style/Widget.MaterialComponents.Chip.Filter"
+                    app:checkedIconVisible="false"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:layout_marginEnd="4dp" android:minHeight="48dp" android:visibility="gone" />
+            </LinearLayout>
+        </HorizontalScrollView>
     </me.zhanghai.android.files.ui.CoordinatorAppBarLayout>
 </merge>

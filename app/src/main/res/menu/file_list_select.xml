@@ -1,63 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
-
-<!--
-  ~ Copyright (c) 2018 Hai Zhang <dreaming.in.code.zh@gmail.com>
-  ~ All Rights Reserved.
-  -->
-
-<menu
-    xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
-    tools:ignore="AlwaysShowAction">
-
-    <item
-        android:id="@+id/action_cut"
-        android:alphabeticShortcut="x"
-        android:icon="@drawable/cut_icon_control_normal_24dp"
-        android:orderInCategory="100"
-        android:title="@string/cut"
-        app:showAsAction="always" />
-
-    <item
-        android:id="@+id/action_copy"
-        android:alphabeticShortcut="c"
-        android:icon="@drawable/copy_icon_control_normal_24dp"
-        android:orderInCategory="100"
-        android:title="@string/copy"
-        app:showAsAction="always" />
-
-    <item
-        android:id="@+id/action_delete"
-        android:icon="@drawable/delete_icon_control_normal_24dp"
-        android:orderInCategory="100"
-        android:title="@string/delete"
-        app:showAsAction="always" />
-
-    <item
-        android:id="@+id/action_extract"
-        android:orderInCategory="100"
-        android:title="@string/file_list_select_action_extract"
-        app:showAsAction="never" />
-
-    <item
-        android:id="@+id/action_archive"
-        android:orderInCategory="100"
-        android:title="@string/file_list_select_action_archive"
-        app:showAsAction="never" />
-
-    <item
-        android:id="@+id/action_share"
-        android:orderInCategory="100"
-        android:title="@string/share"
-        app:showAsAction="never" />
-
-    <item
-        android:id="@+id/action_select_all"
-        android:alphabeticShortcut="a"
-        android:orderInCategory="100"
-        android:title="@string/select_all"
-        app:showAsAction="never" />
-    <item android:id="@+id/action_lan_share" android:title="@string/fw_lan_share" />
-    <item android:id="@+id/action_fw_send_mac" android:title="@string/fw_bridge_send_action" />
+<!-- Copyright (c) 2018 Hai Zhang <dreaming.in.code.zh@gmail.com>
+     All Rights Reserved. -->
+<menu xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" xmlns:tools="http://schemas.android.com/tools" tools:ignore="AlwaysShowAction">
+    <item android:id="@+id/action_cut" android:alphabeticShortcut="x" android:icon="@drawable/cut_icon_control_normal_24dp" android:orderInCategory="100" android:title="@string/cut" app:showAsAction="always" />
+    <item android:id="@+id/action_copy" android:alphabeticShortcut="c" android:icon="@drawable/copy_icon_control_normal_24dp" android:orderInCategory="100" android:title="@string/copy" app:showAsAction="always" />
+    <item android:id="@+id/action_delete" android:icon="@drawable/delete_icon_control_normal_24dp" android:orderInCategory="100" android:title="@string/delete" app:showAsAction="always" />
+    <item android:id="@+id/action_selection_more" android:orderInCategory="110" android:title="@string/fw_menu_more" android:icon="@drawable/more_vertical_icon_control_normal_24dp" app:showAsAction="always" />
+    <item android:id="@+id/action_selection_model" android:title="@string/fw_menu_more" android:visible="false">
+        <menu>
+            <item android:id="@+id/action_extract" android:orderInCategory="100" android:title="@string/file_list_select_action_extract" app:showAsAction="never" />
+            <item android:id="@+id/action_archive" android:orderInCategory="100" android:title="@string/file_list_select_action_archive" app:showAsAction="never" />
+            <item android:id="@+id/action_select_all" android:alphabeticShortcut="a" android:orderInCategory="100" android:title="@string/select_all" app:showAsAction="never" />
+            <item android:id="@+id/action_share_send" android:title="@string/fw_file_share_send">
+                <menu>
+                    <item android:id="@+id/action_fw_send_mac" android:title="@string/fw_bridge_send_action" />
+                    <item android:id="@+id/action_lan_share" android:title="@string/fw_lan_share" />
+                    <item android:id="@+id/action_share" android:orderInCategory="100" android:title="@string/fw_file_share_other_apps" app:showAsAction="never" />
+                </menu>
+            </item>
+        </menu>
+    </item>
 </menu>

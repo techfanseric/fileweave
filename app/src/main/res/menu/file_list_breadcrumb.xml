@@ -7,6 +7,8 @@
 
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <item android:id="@+id/action_navigate_to" android:title="@string/file_list_action_navigate_to" />
+
     <item
         android:id="@+id/action_copy_path"
         android:title="@string/file_list_breadcrumb_action_copy_path" />

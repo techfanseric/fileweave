@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="fw_bridge_screenshot_sync_title">自动发送截图与录屏到 Mac</string>
-    <string name="fw_bridge_screenshot_sync_summary">保持连接时，自动发送 Pictures/Screenshots 文件夹中的新图片和已完成的录屏到配对 Mac。</string>
+    <string name="fw_bridge_screenshot_sync_title">截屏与录屏同步</string>
 </resources>

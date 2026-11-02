@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fw_lan_browser_hint">Open the link in a browser on the same local network to browse folders, download files and preview images. Only the displayed sharing scope is available. HTTP traffic is unencrypted. Stopping, replacing or ending the service revokes the link.</string>
+    <string name="fw_lan_clipboard_title">Share clipboard text</string>
+    <string name="fw_lan_clipboard_hint">Only the text you explicitly share here is available on the web page. New copies on the phone are not shared automatically. After copying new text, return here and share it again. Copying the link changes your phone clipboard but leaves the shared text unchanged.</string>
+    <string name="fw_lan_clipboard_share">Share current clipboard text</string>
+    <string name="fw_lan_clipboard_clear">Stop sharing clipboard text</string>
+    <string name="fw_lan_clipboard_off">Clipboard text is not shared</string>
+    <string name="fw_lan_clipboard_empty">There is no clipboard text to share</string>
+    <string name="fw_lan_clipboard_too_long">Clipboard text exceeds the 100,000 character limit</string>
+    <string name="fw_lan_pick_files">Choose files to share</string>
+    <string name="fw_lan_hub_hint">Opening this page shares your authorized phone storage. You can instead share selected files, a folder or clipboard content.</string>
+    <string name="fw_lan_clipboard_only">Clipboard-only share · no phone files are exposed</string>
+    <string name="fw_lan_manual_hint">The link includes the access code and remains valid for the running share. You can also enter the short address and six-digit code; five attempts per minute are allowed. After changing networks or ending the service, reopen sharing to get the current address.</string>
+    <string name="fw_lan_access_code">Six-digit access code</string>
+    <string name="fw_lan_qr_description">Scan to open the full sharing link</string>
+    <string name="fw_lan_qr_failed">Could not create the QR code; copy the link or use the short address and access code</string>
+    <string name="fw_lan_clipboard_files">Share files from system clipboard</string>
+    <string name="fw_lan_clipboard_no_files">No file links were found in the system clipboard. For files copied inside FileWeave, use Share copied files in the file list.</string>
+    <string name="fw_lan_import_hint">Files received from other apps are copied into this share’s temporary cache, up to 100 files and 1 GiB total. Stopping, replacing or ending the service clears the cache. Files selected in FileWeave use their original paths.</string>
+    <string name="fw_lan_receive_invalid">This content cannot be shared here. Choose readable files from another app, or use FileWeave’s file selection to share its own files.</string>
+    <string name="fw_lan_receive_start">Share received content</string>
+    <string name="fw_lan_preparing">Preparing sharing…</string>
+    <string name="fw_lan_importing">Preparing %1$d received files</string>
+    <string name="fw_lan_prepare_failed">Could not prepare the selected files</string>
+    <string name="fw_lan_import_limit">Imported files exceed the 1 GiB limit, or less than 32 MiB of free cache space remains. Select these files directly in FileWeave to avoid making temporary copies.</string>
+    <string name="fw_lan_received_file">Received file</string>
+</resources>
